@@ -1,0 +1,757 @@
+---
+title: 'Troubleshooting'
+description: 'Common issues and solutions when working with HolySuck API'
+---
+
+## Overview
+
+This guide helps you troubleshoot common issues when integrating with HolySuck API. If you can't find a solution here, please [contact our support team](mailto:support@holysuck.com).
+
+## Authentication Issues
+
+### Invalid API Key
+
+**Problem**: Receiving 401 Unauthorized errors
+
+**Symptoms**:
+```json
+{
+  "error": "invalid_token",
+  "message": "The access token provided is expired, revoked, malformed, or invalid"
+}
+```
+
+**Solutions**:
+
+<Accordion title="Check API Key Format">
+API keys should follow this format:
+- **Live keys**: `pk_live_...` (64 characters total)
+- **Test keys**: `pk_test_...` (64 characters total)
+
+Verify your key:
+```javascript
+const apiKey = process.env.HOLYSUCK_API_KEY;
+console.log('Key format:', apiKey.substring(0, 8) + '...');
+console.log('Key length:', apiKey.length);
+
+// Should output:
+// Key format: pk_live_... or pk_test_...
+// Key length: 64
+```
+</Accordion>
+
+<Accordion title="Verify Environment">
+Make sure you're using the correct API key for your environment:
+
+```javascript
+// Development environment
+const isDev = process.env.NODE_ENV === 'development';
+const apiKey = isDev ? process.env.HOLYSUCK_TEST_API_KEY : process.env.HOLYSUCK_LIVE_API_KEY;
+const baseURL = isDev ? 'https://api.sandbox.holysuck.com/v1' : 'https://api.holysuck.com/v1';
+```
+</Accordion>
+
+<Accordion title="Check API Key Status">
+Test your API key:
+
+```bash
+curl -X GET "https://api.holysuck.com/v1/auth/test" \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+
+Successful response:
+```json
+{
+  "authenticated": true,
+  "token_type": "api_key",
+  "scopes": ["read", "write"],
+  "expires_at": null
+}
+```
+</Accordion>
+
+### Token Expiration
+
+**Problem**: OAuth tokens expiring
+
+**Symptoms**:
+```json
+{
+  "error": "token_expired",
+  "message": "The access token has expired"
+}
+```
+
+**Solution**: Implement automatic token refresh:
+
+```javascript
+class TokenManager {
+  constructor(refreshToken) {
+    this.refreshToken = refreshToken;
+    this.accessToken = null;
+    this.expiresAt = null;
+  }
+
+  async getValidToken() {
+    if (!this.accessToken || this.isTokenExpiring()) {
+      await this.refreshAccessToken();
+    }
+    return this.accessToken;
+  }
+
+  isTokenExpiring() {
+    if (!this.expiresAt) return true;
+    // Refresh if token expires within 5 minutes
+    return Date.now() >= (this.expiresAt - 5 * 60 * 1000);
+  }
+
+  async refreshAccessToken() {
+    const response = await fetch('https://api.holysuck.com/v1/auth/refresh', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refresh_token: this.refreshToken })
+    });
+
+    if (!response.ok) {
+      throw new Error('Token refresh failed');
+    }
+
+    const data = await response.json();
+    this.accessToken = data.access_token;
+    this.expiresAt = Date.now() + (data.expires_in * 1000);
+  }
+}
+```
+
+## Rate Limiting Issues
+
+### Rate Limit Exceeded
+
+**Problem**: Receiving 429 Too Many Requests errors
+
+**Symptoms**:
+```json
+{
+  "error": "rate_limit_exceeded",
+  "message": "API rate limit exceeded",
+  "retry_after": 60
+}
+```
+
+**Solutions**:
+
+<Accordion title="Implement Exponential Backoff">
+```javascript
+async function makeRequestWithBackoff(requestFn, maxRetries = 3) {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      return await requestFn();
+    } catch (error) {
+      if (error.status === 429) {
+        const retryAfter = error.headers['retry-after'] || Math.pow(2, attempt);
+        console.log(`Rate limited, waiting ${retryAfter} seconds...`);
+        
+        if (attempt < maxRetries) {
+          await new Promise(resolve => setTimeout(resolve, retryAfter * 1000));
+          continue;
+        }
+      }
+      throw error;
+    }
+  }
+}
+
+// Usage
+const user = await makeRequestWithBackoff(() => 
+  fetch('/api/v1/users/me', { headers: authHeaders })
+);
+```
+</Accordion>
+
+<Accordion title="Monitor Rate Limit Headers">
+Check rate limit headers in responses:
+
+```javascript
+function checkRateLimit(response) {
+  const limit = response.headers.get('X-RateLimit-Limit');
+  const remaining = response.headers.get('X-RateLimit-Remaining');
+  const reset = response.headers.get('X-RateLimit-Reset');
+  
+  console.log(`Rate limit: ${remaining}/${limit} remaining`);
+  console.log(`Resets at: ${new Date(reset * 1000)}`);
+  
+  if (parseInt(remaining) < 10) {
+    console.warn('Rate limit nearly exceeded!');
+  }
+}
+```
+</Accordion>
+
+<Accordion title="Implement Request Queuing">
+Queue requests to avoid hitting rate limits:
+
+```javascript
+class RequestQueue {
+  constructor(requestsPerSecond = 10) {
+    this.queue = [];
+    this.processing = false;
+    this.interval = 1000 / requestsPerSecond;
+  }
+
+  async enqueue(requestFn) {
+    return new Promise((resolve, reject) => {
+      this.queue.push({ requestFn, resolve, reject });
+      this.processQueue();
+    });
+  }
+
+  async processQueue() {
+    if (this.processing || this.queue.length === 0) return;
+    
+    this.processing = true;
+    
+    while (this.queue.length > 0) {
+      const { requestFn, resolve, reject } = this.queue.shift();
+      
+      try {
+        const result = await requestFn();
+        resolve(result);
+      } catch (error) {
+        reject(error);
+      }
+      
+      // Wait before processing next request
+      await new Promise(resolve => setTimeout(resolve, this.interval));
+    }
+    
+    this.processing = false;
+  }
+}
+
+const queue = new RequestQueue(10); // 10 requests per second
+
+// Usage
+const user = await queue.enqueue(() => 
+  fetch('/api/v1/users/me', { headers: authHeaders })
+);
+```
+</Accordion>
+
+## Network and Connection Issues
+
+### Connection Timeouts
+
+**Problem**: Requests timing out
+
+**Symptoms**:
+- Requests hang indefinitely
+- `ECONNRESET` or `ETIMEDOUT` errors
+
+**Solutions**:
+
+<Accordion title="Set Appropriate Timeouts">
+```javascript
+// Axios
+const client = axios.create({
+  timeout: 30000, // 30 seconds
+  headers: { 'Authorization': `Bearer ${apiKey}` }
+});
+
+// Fetch
+const controller = new AbortController();
+const timeoutId = setTimeout(() => controller.abort(), 30000);
+
+try {
+  const response = await fetch('/api/v1/users', {
+    signal: controller.signal,
+    headers: authHeaders
+  });
+} finally {
+  clearTimeout(timeoutId);
+}
+
+// Node.js HTTP
+const https = require('https');
+
+const options = {
+  hostname: 'api.holysuck.com',
+  timeout: 30000,
+  headers: { 'Authorization': `Bearer ${apiKey}` }
+};
+```
+</Accordion>
+
+<Accordion title="Implement Connection Pooling">
+```javascript
+const https = require('https');
+
+const agent = new https.Agent({
+  keepAlive: true,
+  maxSockets: 10,
+  maxFreeSockets: 2,
+  timeout: 60000
+});
+
+const client = axios.create({
+  httpsAgent: agent,
+  headers: { 'Authorization': `Bearer ${apiKey}` }
+});
+```
+</Accordion>
+
+### SSL/TLS Issues
+
+**Problem**: SSL certificate errors
+
+**Symptoms**:
+```
+Error: unable to verify the first certificate
+Error: certificate has expired
+```
+
+**Solutions**:
+
+<Accordion title="Verify System Clock">
+Ensure your system clock is accurate:
+```bash
+# Linux/macOS
+date
+
+# Windows
+date /t && time /t
+```
+
+If the clock is wrong, SSL certificates may appear invalid.
+</Accordion>
+
+<Accordion title="Update Certificate Store">
+```bash
+# Ubuntu/Debian
+sudo apt-get update && sudo apt-get install ca-certificates
+
+# CentOS/RHEL
+sudo yum update ca-certificates
+
+# macOS
+brew install ca-certificates
+```
+</Accordion>
+
+<Accordion title="Force TLS Version (if needed)">
+```javascript
+const https = require('https');
+
+const agent = new https.Agent({
+  secureProtocol: 'TLSv1_2_method' // Force TLS 1.2
+});
+
+const client = axios.create({ httpsAgent: agent });
+```
+</Accordion>
+
+## Data and Validation Issues
+
+### Validation Errors
+
+**Problem**: Receiving 400 Bad Request with validation errors
+
+**Symptoms**:
+```json
+{
+  "error": "validation_failed",
+  "message": "The request contains invalid parameters",
+  "details": [
+    {
+      "field": "email",
+      "code": "invalid_format",
+      "message": "Email must be a valid email address"
+    }
+  ]
+}
+```
+
+**Solutions**:
+
+<Accordion title="Client-Side Validation">
+Validate data before sending to API:
+
+```javascript
+function validateUserData(userData) {
+  const errors = [];
+  
+  // Email validation
+  if (!userData.email || !/\S+@\S+\.\S+/.test(userData.email)) {
+    errors.push({ field: 'email', message: 'Valid email required' });
+  }
+  
+  // Password validation
+  if (!userData.password || userData.password.length < 8) {
+    errors.push({ field: 'password', message: 'Password must be at least 8 characters' });
+  }
+  
+  // Name validation
+  if (!userData.name || userData.name.trim().length < 2) {
+    errors.push({ field: 'name', message: 'Name must be at least 2 characters' });
+  }
+  
+  if (errors.length > 0) {
+    throw new ValidationError(errors);
+  }
+}
+
+class ValidationError extends Error {
+  constructor(errors) {
+    super('Validation failed');
+    this.errors = errors;
+  }
+}
+```
+</Accordion>
+
+<Accordion title="Handle Validation Responses">
+```javascript
+async function createUser(userData) {
+  try {
+    const response = await fetch('/api/v1/users', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(userData)
+    });
+    
+    if (!response.ok) {
+      const error = await response.json();
+      
+      if (response.status === 400 && error.details) {
+        // Display field-specific errors
+        error.details.forEach(detail => {
+          console.error(`${detail.field}: ${detail.message}`);
+        });
+      }
+      
+      throw new Error(error.message);
+    }
+    
+    return await response.json();
+  } catch (error) {
+    console.error('User creation failed:', error.message);
+    throw error;
+  }
+}
+```
+</Accordion>
+
+### Charset and Encoding Issues
+
+**Problem**: Special characters not displaying correctly
+
+**Solutions**:
+
+<Accordion title="Set Correct Content-Type">
+```javascript
+const headers = {
+  'Content-Type': 'application/json; charset=utf-8',
+  'Authorization': `Bearer ${apiKey}`
+};
+```
+</Accordion>
+
+<Accordion title="Handle Unicode Properly">
+```javascript
+// Ensure proper UTF-8 encoding
+function sanitizeText(text) {
+  return text
+    .normalize('NFC') // Normalize Unicode
+    .trim()
+    .replace(/[\u0000-\u001F\u007F-\u009F]/g, ''); // Remove control characters
+}
+
+const userData = {
+  name: sanitizeText('José María'),
+  bio: sanitizeText('Software engineer with 10+ years experience 🚀')
+};
+```
+</Accordion>
+
+## Webhook Issues
+
+### Webhook Not Receiving Events
+
+**Problem**: Webhooks not being delivered
+
+**Diagnostic Steps**:
+
+<Accordion title="Check Webhook Configuration">
+```bash
+curl -X GET "https://api.holysuck.com/v1/webhooks" \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+
+Verify:
+- Webhook URL is correct and accessible
+- Events are properly configured
+- Webhook status is "active"
+</Accordion>
+
+<Accordion title="Test Webhook Endpoint">
+Test your endpoint manually:
+
+```bash
+curl -X POST "https://yourapp.com/webhooks/holysuck" \
+  -H "Content-Type: application/json" \
+  -H "X-HolySuck-Signature: sha256=test" \
+  -d '{"event": "test", "data": {}}'
+```
+
+Your endpoint should:
+- Return 200 status code
+- Process the request within 30 seconds
+- Handle the expected payload format
+</Accordion>
+
+<Accordion title="Verify Webhook Signature">
+```javascript
+const crypto = require('crypto');
+
+function verifyWebhookSignature(payload, signature, secret) {
+  const expectedSignature = crypto
+    .createHmac('sha256', secret)
+    .update(payload, 'utf8')
+    .digest('hex');
+  
+  const actualSignature = signature.replace('sha256=', '');
+  
+  return crypto.timingSafeEqual(
+    Buffer.from(expectedSignature, 'hex'),
+    Buffer.from(actualSignature, 'hex')
+  );
+}
+
+// Express.js middleware
+app.use('/webhooks', express.raw({ type: 'application/json' }));
+
+app.post('/webhooks/holysuck', (req, res) => {
+  const signature = req.headers['x-holysuck-signature'];
+  const payload = req.body;
+  
+  if (!verifyWebhookSignature(payload, signature, process.env.WEBHOOK_SECRET)) {
+    return res.status(401).send('Invalid signature');
+  }
+  
+  // Process webhook
+  const event = JSON.parse(payload);
+  console.log('Received webhook:', event.event);
+  
+  res.status(200).send('OK');
+});
+```
+</Accordion>
+
+### Webhook Delivery Failures
+
+**Problem**: Webhook deliveries failing
+
+**Solutions**:
+
+<Accordion title="Implement Retry Logic">
+HolySuck automatically retries failed webhooks, but implement your own backup:
+
+```javascript
+const webhookQueue = [];
+
+function processWebhookQueue() {
+  setInterval(async () => {
+    while (webhookQueue.length > 0) {
+      const webhook = webhookQueue.shift();
+      
+      try {
+        await processWebhook(webhook);
+      } catch (error) {
+        console.error('Webhook processing failed:', error);
+        
+        // Re-queue with exponential backoff
+        webhook.retryCount = (webhook.retryCount || 0) + 1;
+        
+        if (webhook.retryCount < 5) {
+          setTimeout(() => {
+            webhookQueue.push(webhook);
+          }, Math.pow(2, webhook.retryCount) * 1000);
+        }
+      }
+    }
+  }, 5000);
+}
+```
+</Accordion>
+
+<Accordion title="Handle Duplicate Events">
+Webhooks may be delivered multiple times. Implement idempotency:
+
+```javascript
+const processedEvents = new Set();
+
+app.post('/webhooks/holysuck', (req, res) => {
+  const event = JSON.parse(req.body);
+  const eventId = event.id || `${event.event}-${event.timestamp}`;
+  
+  if (processedEvents.has(eventId)) {
+    console.log('Duplicate event ignored:', eventId);
+    return res.status(200).send('OK');
+  }
+  
+  processedEvents.add(eventId);
+  
+  // Process event
+  handleWebhookEvent(event);
+  
+  res.status(200).send('OK');
+});
+```
+</Accordion>
+
+## Performance Issues
+
+### Slow Response Times
+
+**Problem**: API requests taking too long
+
+**Diagnostic Steps**:
+
+<Accordion title="Measure Request Performance">
+```javascript
+async function measurePerformance(requestFn) {
+  const start = performance.now();
+  
+  try {
+    const result = await requestFn();
+    const duration = performance.now() - start;
+    
+    console.log(`Request completed in ${duration.toFixed(2)}ms`);
+    return result;
+  } catch (error) {
+    const duration = performance.now() - start;
+    console.log(`Request failed after ${duration.toFixed(2)}ms`);
+    throw error;
+  }
+}
+
+// Usage
+const user = await measurePerformance(() =>
+  fetch('/api/v1/users/me', { headers: authHeaders })
+);
+```
+</Accordion>
+
+<Accordion title="Optimize Queries">
+Use query parameters to limit data:
+
+```javascript
+// Instead of fetching all users
+const allUsers = await fetch('/api/v1/users?per_page=1000');
+
+// Fetch only what you need
+const activeUsers = await fetch('/api/v1/users?status=active&per_page=20');
+
+// Use field selection if available
+const userNames = await fetch('/api/v1/users?fields=id,name,email');
+```
+</Accordion>
+
+<Accordion title="Implement Caching">
+```javascript
+const cache = new Map();
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+async function getCachedUser(userId) {
+  const cacheKey = `user:${userId}`;
+  const cached = cache.get(cacheKey);
+  
+  if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+    return cached.data;
+  }
+  
+  const user = await fetch(`/api/v1/users/${userId}`);
+  const userData = await user.json();
+  
+  cache.set(cacheKey, {
+    data: userData,
+    timestamp: Date.now()
+  });
+  
+  return userData;
+}
+```
+</Accordion>
+
+## Common Error Codes
+
+| Status | Error Code | Description | Solution |
+|--------|------------|-------------|----------|
+| 400 | `validation_failed` | Request parameters invalid | Check request format and required fields |
+| 401 | `invalid_token` | Authentication failed | Verify API key or refresh token |
+| 403 | `insufficient_permissions` | Missing required permissions | Check API key scopes or user role |
+| 404 | `not_found` | Resource doesn't exist | Verify resource ID and permissions |
+| 409 | `conflict` | Resource already exists | Check for duplicates or use update instead |
+| 429 | `rate_limit_exceeded` | Too many requests | Implement backoff and retry logic |
+| 500 | `internal_error` | Server error | Retry request or contact support |
+
+## Debug Mode
+
+Enable debug logging for troubleshooting:
+
+```javascript
+// Enable debug mode
+process.env.HOLYSUCK_DEBUG = 'true';
+
+// Custom debug function
+function debugLog(message, data) {
+  if (process.env.HOLYSUCK_DEBUG === 'true') {
+    console.log(`[HolySuck Debug] ${message}`, data || '');
+  }
+}
+
+// Usage
+debugLog('Making API request', { url: '/users/me', method: 'GET' });
+```
+
+## Getting Additional Help
+
+If you're still experiencing issues:
+
+1. **Check Status Page**: [status.holysuck.com](https://status.holysuck.com)
+2. **Review Documentation**: Ensure you're following the latest API specifications
+3. **Join Discord**: [discord.gg/holysuck](https://discord.gg/holysuck) for community support
+4. **Contact Support**: [support@holysuck.com](mailto:support@holysuck.com) with:
+   - API key ID (not the full key)
+   - Request/response examples
+   - Error messages and timestamps
+   - Steps to reproduce the issue
+
+## Support Package
+
+When contacting support, include this information:
+
+```javascript
+function generateSupportPackage() {
+  return {
+    timestamp: new Date().toISOString(),
+    environment: {
+      node_version: process.version,
+      platform: process.platform,
+      arch: process.arch
+    },
+    api_configuration: {
+      base_url: process.env.HOLYSUCK_BASE_URL,
+      api_key_prefix: process.env.HOLYSUCK_API_KEY?.substring(0, 8),
+      environment: process.env.NODE_ENV
+    },
+    last_error: {
+      // Include sanitized error details
+    }
+  };
+}
+
+console.log('Support package:', JSON.stringify(generateSupportPackage(), null, 2));
+```
