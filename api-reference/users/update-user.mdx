@@ -1,0 +1,472 @@
+---
+title: "Update User"
+api: "PUT https://api.holysuck.com/v1/users/{user_id}"
+description: "Update an existing user's information"
+---
+
+## Overview
+
+Update an existing user's profile information. This endpoint allows you to modify user details such as name, role, status, and custom metadata.
+
+## Authentication
+
+This endpoint requires authentication with appropriate permissions:
+- **Own profile**: Users can update their own profile (use `/users/me`)
+- **Other users**: Requires admin or moderator permissions
+
+## Path Parameters
+
+<ParamField path="user_id" type="string" required>
+  The unique identifier of the user to update. Use "me" to update the current user's profile.
+</ParamField>
+
+## Request Body
+
+<ParamField body="name" type="string">
+  The user's display name (2-100 characters)
+</ParamField>
+
+<ParamField body="avatar_url" type="string">
+  URL to the user's profile picture
+</ParamField>
+
+<ParamField body="status" type="string">
+  User account status: `active`, `inactive`, or `suspended` (admin only)
+</ParamField>
+
+<ParamField body="role" type="string">
+  User's role: `user`, `admin`, or `moderator` (admin only)
+</ParamField>
+
+<ParamField body="metadata" type="object">
+  Custom metadata to associate with the user account
+</ParamField>
+
+## Response
+
+Returns the updated user object.
+
+<ResponseField name="id" type="string" required>
+  Unique user identifier
+</ResponseField>
+
+<ResponseField name="email" type="string" required>
+  User's email address (cannot be updated via this endpoint)
+</ResponseField>
+
+<ResponseField name="name" type="string" required>
+  User's updated display name
+</ResponseField>
+
+<ResponseField name="avatar_url" type="string">
+  Updated profile picture URL
+</ResponseField>
+
+<ResponseField name="status" type="string" required>
+  Updated user account status
+</ResponseField>
+
+<ResponseField name="role" type="string" required>
+  Updated user role
+</ResponseField>
+
+<ResponseField name="metadata" type="object">
+  Updated custom metadata
+</ResponseField>
+
+<ResponseField name="updated_at" type="string" required>
+  ISO 8601 timestamp when the user was last updated
+</ResponseField>
+
+## Example Request
+
+<CodeGroup>
+
+```bash Update Own Profile
+curl -X PUT "https://api.holysuck.com/v1/users/me" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "John Smith",
+    "avatar_url": "https://example.com/avatar.jpg",
+    "metadata": {
+      "bio": "Senior Developer",
+      "location": "San Francisco, CA"
+    }
+  }'
+```
+
+```bash Admin Update
+curl -X PUT "https://api.holysuck.com/v1/users/user_1234567890abcdef" \
+  -H "Authorization: Bearer YOUR_ADMIN_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "John Smith Jr.",
+    "status": "active",
+    "role": "moderator",
+    "metadata": {
+      "department": "engineering",
+      "manager_id": "user_abcdef1234567890",
+      "updated_by": "admin"
+    }
+  }'
+```
+
+```javascript JavaScript
+const response = await fetch('https://api.holysuck.com/v1/users/me', {
+  method: 'PUT',
+  headers: {
+    'Authorization': 'Bearer YOUR_API_KEY',
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify({
+    name: 'John Smith',
+    metadata: {
+      bio: 'Senior Developer',
+      skills: ['JavaScript', 'Python', 'Go']
+    }
+  })
+});
+
+const updatedUser = await response.json();
+```
+
+```python Python
+import requests
+
+data = {
+    'name': 'John Smith',
+    'avatar_url': 'https://example.com/new-avatar.jpg',
+    'metadata': {
+        'bio': 'Senior Developer',
+        'timezone': 'America/Los_Angeles'
+    }
+}
+
+response = requests.put(
+    'https://api.holysuck.com/v1/users/me',
+    headers={
+        'Authorization': 'Bearer YOUR_API_KEY',
+        'Content-Type': 'application/json'
+    },
+    json=data
+)
+
+updated_user = response.json()
+```
+
+</CodeGroup>
+
+## Example Response
+
+<CodeGroup>
+
+```json 200 Success
+{
+  "id": "user_1234567890abcdef",
+  "email": "john.doe@example.com",
+  "name": "John Smith",
+  "avatar_url": "https://example.com/avatar.jpg",
+  "status": "active",
+  "role": "user",
+  "metadata": {
+    "bio": "Senior Developer",
+    "location": "San Francisco, CA",
+    "skills": ["JavaScript", "Python", "Go"],
+    "updated_by": "self"
+  },
+  "created_at": "2024-01-15T10:30:00Z",
+  "updated_at": "2024-01-20T16:45:00Z",
+  "last_login_at": "2024-01-20T14:45:00Z"
+}
+```
+
+```json 404 User Not Found
+{
+  "error": "user_not_found",
+  "message": "The requested user could not be found",
+  "documentation_url": "https://docs.holysuck.com/errors/user_not_found"
+}
+```
+
+```json 403 Insufficient Permissions
+{
+  "error": "insufficient_permissions",
+  "message": "You don't have permission to update this user",
+  "documentation_url": "https://docs.holysuck.com/errors/insufficient_permissions"
+}
+```
+
+```json 400 Validation Error
+{
+  "error": "validation_failed",
+  "message": "The request contains invalid parameters",
+  "details": [
+    {
+      "field": "name",
+      "code": "too_short",
+      "message": "Name must be at least 2 characters long"
+    }
+  ],
+  "documentation_url": "https://docs.holysuck.com/errors/validation_failed"
+}
+```
+
+</CodeGroup>
+
+## Update Strategies
+
+### Partial Updates
+
+You only need to include the fields you want to update. Other fields will remain unchanged:
+
+```javascript
+// Only update the name
+await fetch('/api/v1/users/me', {
+  method: 'PUT',
+  body: JSON.stringify({ name: 'New Name' })
+});
+```
+
+### Metadata Updates
+
+Metadata updates are merged with existing metadata. To remove a metadata field, set it to `null`:
+
+```javascript
+// Add new metadata fields and remove old ones
+await fetch('/api/v1/users/me', {
+  method: 'PUT',
+  body: JSON.stringify({
+    metadata: {
+      new_field: 'new_value',
+      old_field_to_remove: null
+    }
+  })
+});
+```
+
+### Bulk Updates
+
+For updating multiple users, use the bulk update endpoint:
+
+```http
+PUT /v1/users/bulk
+```
+
+## Permissions Matrix
+
+| Field | User (Own) | User (Other) | Moderator | Admin |
+|-------|------------|--------------|-----------|-------|
+| `name` | ✅ | ❌ | ✅ | ✅ |
+| `avatar_url` | ✅ | ❌ | ✅ | ✅ |
+| `status` | ❌ | ❌ | ✅ | ✅ |
+| `role` | ❌ | ❌ | ❌ | ✅ |
+| `metadata` | ✅ | ❌ | ✅ | ✅ |
+
+<Note>
+**Email Updates**: Email addresses cannot be updated via this endpoint for security reasons. Use the dedicated email change endpoint instead.
+</Note>
+
+## Validation Rules
+
+### Name
+- Minimum 2 characters
+- Maximum 100 characters
+- Cannot contain only whitespace
+- Special characters allowed: spaces, hyphens, apostrophes
+
+### Avatar URL
+- Must be a valid HTTP/HTTPS URL
+- Maximum 2048 characters
+- Recommended image formats: JPG, PNG, WebP
+- Recommended maximum size: 1MB
+
+### Status (Admin only)
+- Must be one of: `active`, `inactive`, `suspended`
+- Cannot set own status to `suspended`
+- Suspending a user logs them out immediately
+
+### Role (Admin only)
+- Must be one of: `user`, `admin`, `moderator`
+- Cannot demote the last admin
+- Cannot change own role
+
+### Metadata
+- Maximum 50 key-value pairs
+- Keys must be strings (max 40 characters)
+- Values can be strings, numbers, booleans, or null
+- String values limited to 500 characters
+- Reserved keys: `id`, `email`, `created_at`, `updated_at`
+
+## Common Use Cases
+
+### Profile Updates
+
+```javascript
+// User updating their own profile
+async function updateProfile(profileData) {
+  try {
+    const response = await fetch('/api/v1/users/me', {
+      method: 'PUT',
+      headers: {
+        'Authorization': `Bearer ${userToken}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(profileData)
+    });
+    
+    if (!response.ok) {
+      throw new Error('Failed to update profile');
+    }
+    
+    return await response.json();
+  } catch (error) {
+    console.error('Profile update failed:', error);
+    throw error;
+  }
+}
+
+// Usage
+updateProfile({
+  name: 'John Smith',
+  metadata: {
+    bio: 'Full-stack developer',
+    website: 'https://johnsmith.dev'
+  }
+});
+```
+
+### Admin User Management
+
+```javascript
+// Admin updating user status and role
+async function updateUserAccess(userId, updates) {
+  try {
+    const response = await fetch(`/api/v1/users/${userId}`, {
+      method: 'PUT',
+      headers: {
+        'Authorization': `Bearer ${adminToken}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(updates)
+    });
+    
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.message);
+    }
+    
+    return await response.json();
+  } catch (error) {
+    console.error('User update failed:', error);
+    throw error;
+  }
+}
+
+// Promote user to moderator
+updateUserAccess('user_123', {
+  role: 'moderator',
+  metadata: {
+    promoted_at: new Date().toISOString(),
+    promoted_by: 'admin_456'
+  }
+});
+
+// Suspend user account
+updateUserAccess('user_123', {
+  status: 'suspended',
+  metadata: {
+    suspension_reason: 'Policy violation',
+    suspended_by: 'admin_456',
+    suspended_at: new Date().toISOString()
+  }
+});
+```
+
+### Metadata Management
+
+```javascript
+// Add tracking metadata
+async function addUserMetadata(userId, newMetadata) {
+  // First get current user data
+  const currentUser = await fetch(`/api/v1/users/${userId}`);
+  const userData = await currentUser.json();
+  
+  // Merge with existing metadata
+  const updatedMetadata = {
+    ...userData.metadata,
+    ...newMetadata,
+    last_updated: new Date().toISOString()
+  };
+  
+  // Update user
+  return await fetch(`/api/v1/users/${userId}`, {
+    method: 'PUT',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ metadata: updatedMetadata })
+  });
+}
+```
+
+## Error Handling
+
+Handle common error scenarios:
+
+```javascript
+async function updateUser(userId, updates) {
+  try {
+    const response = await fetch(`/api/v1/users/${userId}`, {
+      method: 'PUT',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(updates)
+    });
+    
+    if (!response.ok) {
+      const error = await response.json();
+      
+      switch (response.status) {
+        case 400:
+          console.error('Validation errors:', error.details);
+          break;
+        case 403:
+          console.error('Permission denied:', error.message);
+          break;
+        case 404:
+          console.error('User not found:', error.message);
+          break;
+        default:
+          console.error('Update failed:', error.message);
+      }
+      
+      throw error;
+    }
+    
+    return await response.json();
+  } catch (error) {
+    console.error('Request failed:', error);
+    throw error;
+  }
+}
+```
+
+## Rate Limiting
+
+This endpoint is subject to standard rate limits:
+- **1000 requests per minute** for API keys
+- **5000 requests per minute** for OAuth tokens
+
+Metadata updates are tracked separately and limited to:
+- **100 metadata updates per hour** per user
+
+## Related Endpoints
+
+- [Get User](/api-reference/users/get-user) - Retrieve user information
+- [Create User](/api-reference/users/create-user) - Create a new user
+- [Delete User](/api-reference/users/delete-user) - Remove user account
+- [Change Email](/api-reference/users/change-email) - Update email address

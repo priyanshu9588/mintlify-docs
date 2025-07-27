@@ -1,0 +1,716 @@
+---
+title: 'JavaScript SDK'
+description: 'Official JavaScript/TypeScript SDK for HolySuck API'
+---
+
+## Overview
+
+The HolySuck JavaScript SDK provides a convenient way to interact with the HolySuck API from Node.js and browser environments. It includes TypeScript definitions, automatic retry logic, and comprehensive error handling.
+
+## Installation
+
+<CodeGroup>
+
+```bash npm
+npm install @holysuck/sdk
+```
+
+```bash yarn
+yarn add @holysuck/sdk
+```
+
+```bash pnpm
+pnpm add @holysuck/sdk
+```
+
+</CodeGroup>
+
+## Quick Start
+
+### Initialize the Client
+
+<CodeGroup>
+
+```javascript JavaScript
+const { HolySuck } = require('@holysuck/sdk');
+
+const client = new HolySuck({
+  apiKey: 'your_api_key_here',
+  environment: 'production' // or 'sandbox'
+});
+```
+
+```typescript TypeScript
+import { HolySuck } from '@holysuck/sdk';
+
+const client = new HolySuck({
+  apiKey: process.env.HOLYSUCK_API_KEY!,
+  environment: 'production',
+  timeout: 30000 // 30 seconds
+});
+```
+
+</CodeGroup>
+
+### Make Your First Request
+
+```javascript
+async function main() {
+  try {
+    // Get current user
+    const user = await client.users.me();
+    console.log('Current user:', user);
+    
+    // Create a new user
+    const newUser = await client.users.create({
+      email: 'newuser@example.com',
+      name: 'New User',
+      password: 'securePassword123'
+    });
+    console.log('Created user:', newUser);
+    
+  } catch (error) {
+    console.error('Error:', error.message);
+  }
+}
+
+main();
+```
+
+## Configuration
+
+### Environment Variables
+
+Create a `.env` file in your project root:
+
+```bash
+HOLYSUCK_API_KEY=your_api_key_here
+HOLYSUCK_ENVIRONMENT=production
+HOLYSUCK_TIMEOUT=30000
+```
+
+### Configuration Options
+
+```typescript
+interface HolySuckConfig {
+  apiKey: string;                    // Required: Your API key
+  environment?: 'production' | 'sandbox'; // Default: 'production'
+  timeout?: number;                  // Default: 30000 (30 seconds)
+  retries?: number;                  // Default: 3
+  baseURL?: string;                  // Custom base URL
+  headers?: Record<string, string>;  // Additional headers
+}
+
+const client = new HolySuck({
+  apiKey: process.env.HOLYSUCK_API_KEY,
+  environment: 'production',
+  timeout: 60000,
+  retries: 5,
+  headers: {
+    'X-Custom-Header': 'value'
+  }
+});
+```
+
+## API Reference
+
+### Users
+
+```typescript
+// Get current user
+const currentUser = await client.users.me();
+
+// Get user by ID
+const user = await client.users.get('user_123');
+
+// Create user
+const newUser = await client.users.create({
+  email: 'user@example.com',
+  name: 'John Doe',
+  password: 'password123',
+  role: 'user',
+  metadata: { department: 'engineering' }
+});
+
+// Update user
+const updatedUser = await client.users.update('user_123', {
+  name: 'John Smith',
+  metadata: { department: 'marketing' }
+});
+
+// Delete user
+await client.users.delete('user_123');
+
+// List users with pagination
+const users = await client.users.list({
+  page: 1,
+  per_page: 20,
+  status: 'active'
+});
+
+// Bulk create users
+const bulkResult = await client.users.bulkCreate([
+  { email: 'user1@example.com', name: 'User 1', password: 'pass123' },
+  { email: 'user2@example.com', name: 'User 2', password: 'pass456' }
+]);
+```
+
+### Services
+
+```typescript
+// Get service
+const service = await client.services.get('service_123');
+
+// Create service
+const newService = await client.services.create({
+  name: 'My Application',
+  description: 'A sample application',
+  type: 'web_application',
+  configuration: {
+    webhook_url: 'https://myapp.com/webhooks',
+    allowed_origins: ['https://myapp.com']
+  }
+});
+
+// Update service
+const updatedService = await client.services.update('service_123', {
+  name: 'Updated Application Name',
+  status: 'active'
+});
+
+// Delete service
+await client.services.delete('service_123');
+
+// List services
+const services = await client.services.list({
+  page: 1,
+  per_page: 10
+});
+
+// Get service API keys
+const apiKeys = await client.services.getApiKeys('service_123');
+
+// Create API key for service
+const newApiKey = await client.services.createApiKey('service_123', {
+  name: 'Production Key',
+  scopes: ['read', 'write']
+});
+```
+
+### Authentication
+
+```typescript
+// Login with email/password
+const authResult = await client.auth.login({
+  email: 'user@example.com',
+  password: 'password123'
+});
+
+// Refresh access token
+const newTokens = await client.auth.refresh({
+  refresh_token: 'your_refresh_token'
+});
+
+// Logout
+await client.auth.logout();
+
+// Verify token
+const tokenInfo = await client.auth.verify();
+```
+
+### Analytics
+
+```typescript
+// Get metrics
+const metrics = await client.analytics.getMetrics({
+  service_id: 'service_123',
+  start_date: '2024-01-01',
+  end_date: '2024-01-31',
+  granularity: 'day'
+});
+
+// Get reports
+const report = await client.analytics.getReport({
+  type: 'usage_summary',
+  filters: {
+    service_id: 'service_123'
+  }
+});
+
+// Export data
+const exportJob = await client.analytics.exportData({
+  format: 'csv',
+  filters: {
+    start_date: '2024-01-01',
+    end_date: '2024-01-31'
+  }
+});
+```
+
+### Webhooks
+
+```typescript
+// Create webhook
+const webhook = await client.webhooks.create({
+  url: 'https://myapp.com/webhooks/holysuck',
+  events: ['user.created', 'user.updated'],
+  secret: 'webhook_secret_123'
+});
+
+// List webhooks
+const webhooks = await client.webhooks.list({
+  service_id: 'service_123'
+});
+
+// Update webhook
+const updatedWebhook = await client.webhooks.update('webhook_123', {
+  events: ['user.created', 'user.updated', 'user.deleted'],
+  status: 'active'
+});
+
+// Delete webhook
+await client.webhooks.delete('webhook_123');
+
+// Verify webhook signature
+const isValid = client.webhooks.verifySignature(
+  payload,
+  signature,
+  secret
+);
+```
+
+## TypeScript Support
+
+The SDK is written in TypeScript and provides full type definitions:
+
+```typescript
+import { HolySuck, User, Service, CreateUserRequest } from '@holysuck/sdk';
+
+const client = new HolySuck({ apiKey: 'your_key' });
+
+// Type-safe user creation
+const userData: CreateUserRequest = {
+  email: 'user@example.com',
+  name: 'John Doe',
+  password: 'password123',
+  role: 'user' // TypeScript will enforce valid roles
+};
+
+const user: User = await client.users.create(userData);
+```
+
+### Custom Types
+
+```typescript
+// Extend user metadata type
+interface CustomUserMetadata {
+  department: string;
+  employee_id: string;
+  start_date: string;
+}
+
+interface CustomUser extends User {
+  metadata: CustomUserMetadata;
+}
+
+// Use with type assertion
+const user = await client.users.get('user_123') as CustomUser;
+console.log(user.metadata.department);
+```
+
+## Error Handling
+
+The SDK provides structured error handling:
+
+```typescript
+import { HolySuckError, ValidationError, RateLimitError } from '@holysuck/sdk';
+
+try {
+  const user = await client.users.create(userData);
+} catch (error) {
+  if (error instanceof ValidationError) {
+    // Handle validation errors
+    console.log('Validation failed:');
+    error.details.forEach(detail => {
+      console.log(`${detail.field}: ${detail.message}`);
+    });
+  } else if (error instanceof RateLimitError) {
+    // Handle rate limiting
+    console.log(`Rate limited. Retry after: ${error.retryAfter} seconds`);
+  } else if (error instanceof HolySuckError) {
+    // Handle other API errors
+    console.log(`API Error: ${error.code} - ${error.message}`);
+  } else {
+    // Handle network or other errors
+    console.log(`Unexpected error: ${error.message}`);
+  }
+}
+```
+
+### Error Types
+
+```typescript
+class HolySuckError extends Error {
+  code: string;
+  status: number;
+  details?: any;
+}
+
+class ValidationError extends HolySuckError {
+  details: Array<{
+    field: string;
+    code: string;
+    message: string;
+  }>;
+}
+
+class RateLimitError extends HolySuckError {
+  retryAfter: number;
+  limit: number;
+  remaining: number;
+}
+
+class NotFoundError extends HolySuckError {}
+class UnauthorizedError extends HolySuckError {}
+```
+
+## Pagination
+
+Handle paginated responses easily:
+
+```typescript
+// Manual pagination
+let page = 1;
+let allUsers = [];
+
+while (true) {
+  const response = await client.users.list({ page, per_page: 100 });
+  allUsers.push(...response.data);
+  
+  if (!response.pagination.has_more) {
+    break;
+  }
+  
+  page++;
+}
+
+// Auto-pagination helper
+const allUsers = await client.users.listAll({
+  status: 'active'
+});
+
+// Async iterator
+for await (const user of client.users.iterate({ status: 'active' })) {
+  console.log(user.name);
+}
+```
+
+## Rate Limiting
+
+The SDK automatically handles rate limiting:
+
+```typescript
+const client = new HolySuck({
+  apiKey: 'your_key',
+  retries: 5,           // Number of retries for rate limited requests
+  retryDelay: 1000,     // Base delay between retries (ms)
+  backoffFactor: 2      // Exponential backoff multiplier
+});
+
+// The SDK will automatically retry rate-limited requests
+const user = await client.users.get('user_123');
+```
+
+### Manual Rate Limit Handling
+
+```typescript
+import { RateLimitError } from '@holysuck/sdk';
+
+async function makeRequestWithCustomRetry() {
+  let retries = 0;
+  const maxRetries = 3;
+  
+  while (retries < maxRetries) {
+    try {
+      return await client.users.get('user_123');
+    } catch (error) {
+      if (error instanceof RateLimitError) {
+        retries++;
+        if (retries < maxRetries) {
+          await new Promise(resolve => 
+            setTimeout(resolve, error.retryAfter * 1000)
+          );
+          continue;
+        }
+      }
+      throw error;
+    }
+  }
+}
+```
+
+## Webhooks Integration
+
+### Express.js Integration
+
+```javascript
+const express = require('express');
+const { HolySuck } = require('@holysuck/sdk');
+
+const app = express();
+const client = new HolySuck({ apiKey: 'your_key' });
+
+// Raw body parser for webhooks
+app.use('/webhooks', express.raw({ type: 'application/json' }));
+
+app.post('/webhooks/holysuck', (req, res) => {
+  const signature = req.headers['x-holysuck-signature'];
+  const payload = req.body;
+  const secret = process.env.WEBHOOK_SECRET;
+
+  // Verify webhook signature
+  if (!client.webhooks.verifySignature(payload, signature, secret)) {
+    return res.status(401).send('Invalid signature');
+  }
+
+  const event = JSON.parse(payload);
+  
+  // Handle different event types
+  switch (event.event) {
+    case 'user.created':
+      handleUserCreated(event.data);
+      break;
+    case 'user.updated':
+      handleUserUpdated(event.data);
+      break;
+    case 'service.deleted':
+      handleServiceDeleted(event.data);
+      break;
+    default:
+      console.log(`Unhandled event: ${event.event}`);
+  }
+
+  res.status(200).send('OK');
+});
+
+function handleUserCreated(user) {
+  console.log('New user created:', user.email);
+  // Send welcome email, update CRM, etc.
+}
+
+function handleUserUpdated(user) {
+  console.log('User updated:', user.email);
+  // Update local cache, sync with other systems, etc.
+}
+
+function handleServiceDeleted(service) {
+  console.log('Service deleted:', service.name);
+  // Cleanup resources, notify team, etc.
+}
+```
+
+## Testing
+
+### Unit Tests with Jest
+
+```javascript
+const { HolySuck } = require('@holysuck/sdk');
+
+// Mock the SDK for testing
+jest.mock('@holysuck/sdk');
+
+describe('UserService', () => {
+  let mockClient;
+  
+  beforeEach(() => {
+    mockClient = {
+      users: {
+        create: jest.fn(),
+        get: jest.fn(),
+        update: jest.fn(),
+        delete: jest.fn()
+      }
+    };
+    
+    HolySuck.mockImplementation(() => mockClient);
+  });
+
+  test('should create user successfully', async () => {
+    const userData = {
+      email: 'test@example.com',
+      name: 'Test User',
+      password: 'password123'
+    };
+    
+    const expectedUser = { id: 'user_123', ...userData };
+    mockClient.users.create.mockResolvedValue(expectedUser);
+
+    const userService = new UserService();
+    const result = await userService.createUser(userData);
+
+    expect(mockClient.users.create).toHaveBeenCalledWith(userData);
+    expect(result).toEqual(expectedUser);
+  });
+});
+```
+
+### Integration Tests
+
+```javascript
+describe('HolySuck Integration Tests', () => {
+  let client;
+  let testUser;
+
+  beforeAll(() => {
+    client = new HolySuck({
+      apiKey: process.env.HOLYSUCK_TEST_API_KEY,
+      environment: 'sandbox'
+    });
+  });
+
+  test('complete user lifecycle', async () => {
+    // Create user
+    testUser = await client.users.create({
+      email: `test-${Date.now()}@example.com`,
+      name: 'Test User',
+      password: 'testPassword123'
+    });
+    
+    expect(testUser.id).toBeDefined();
+    expect(testUser.email).toContain('@example.com');
+
+    // Get user
+    const retrievedUser = await client.users.get(testUser.id);
+    expect(retrievedUser.id).toBe(testUser.id);
+
+    // Update user
+    const updatedUser = await client.users.update(testUser.id, {
+      name: 'Updated Test User'
+    });
+    expect(updatedUser.name).toBe('Updated Test User');
+
+    // Delete user
+    await client.users.delete(testUser.id);
+    
+    // Verify deletion
+    await expect(client.users.get(testUser.id))
+      .rejects.toThrow('User not found');
+  });
+
+  afterEach(async () => {
+    // Cleanup
+    if (testUser?.id) {
+      try {
+        await client.users.delete(testUser.id);
+      } catch (error) {
+        // User might already be deleted
+      }
+    }
+  });
+});
+```
+
+## Advanced Usage
+
+### Custom Request Interceptors
+
+```typescript
+const client = new HolySuck({
+  apiKey: 'your_key',
+  interceptors: {
+    request: (config) => {
+      // Add custom headers
+      config.headers['X-Request-ID'] = generateRequestId();
+      console.log(`Making request: ${config.method} ${config.url}`);
+      return config;
+    },
+    response: (response) => {
+      console.log(`Response: ${response.status}`);
+      return response;
+    },
+    error: (error) => {
+      console.error('Request failed:', error.message);
+      throw error;
+    }
+  }
+});
+```
+
+### Connection Pooling
+
+```typescript
+import { HolySuck } from '@holysuck/sdk';
+import { Agent } from 'https';
+
+const agent = new Agent({
+  keepAlive: true,
+  maxSockets: 10,
+  maxFreeSockets: 2
+});
+
+const client = new HolySuck({
+  apiKey: 'your_key',
+  httpAgent: agent
+});
+```
+
+### Caching
+
+```typescript
+import { HolySuck } from '@holysuck/sdk';
+import NodeCache from 'node-cache';
+
+const cache = new NodeCache({ stdTTL: 300 }); // 5 minutes
+
+class CachedHolySuckClient extends HolySuck {
+  async getUser(userId: string) {
+    const cacheKey = `user:${userId}`;
+    let user = cache.get(cacheKey);
+    
+    if (!user) {
+      user = await super.users.get(userId);
+      cache.set(cacheKey, user);
+    }
+    
+    return user;
+  }
+}
+
+const client = new CachedHolySuckClient({ apiKey: 'your_key' });
+```
+
+## Migration Guide
+
+### From v1 to v2
+
+```typescript
+// v1 (deprecated)
+const client = new HolySuck('your_api_key');
+const user = await client.getUser('user_123');
+
+// v2 (current)
+const client = new HolySuck({ apiKey: 'your_api_key' });
+const user = await client.users.get('user_123');
+```
+
+### Breaking Changes
+
+- Constructor now takes a configuration object instead of just the API key
+- Methods are now organized by resource (users, services, etc.)
+- Error classes have been renamed and restructured
+- Some method names have changed for consistency
+
+## Examples
+
+Check out our [examples repository](https://github.com/holysuck/sdk-examples-js) for complete working examples:
+
+- [Express.js API integration](https://github.com/holysuck/sdk-examples-js/tree/main/express-api)
+- [React user dashboard](https://github.com/holysuck/sdk-examples-js/tree/main/react-dashboard)
+- [Node.js background workers](https://github.com/holysuck/sdk-examples-js/tree/main/workers)
+- [Webhook handlers](https://github.com/holysuck/sdk-examples-js/tree/main/webhooks)
+
+## Support
+
+- [GitHub Issues](https://github.com/holysuck/sdk-js/issues)
+- [Discord Community](https://discord.gg/holysuck)
+- [Email Support](mailto:support@holysuck.com)

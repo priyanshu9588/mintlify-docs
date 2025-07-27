@@ -1,0 +1,310 @@
+---
+title: 'Rate Limits'
+description: 'Understanding HolySuck API rate limits and best practices'
+---
+
+## Overview
+
+HolySuck API implements rate limiting to ensure fair usage and maintain service quality for all users. Rate limits are applied per API key or token and are reset at regular intervals.
+
+## Rate Limit Tiers
+
+Different authentication methods have different rate limits:
+
+| Authentication Method | Requests per Minute | Requests per Hour | Requests per Day |
+|----------------------|-------------------|------------------|------------------|
+| API Key (Free) | 100 | 6,000 | 144,000 |
+| API Key (Pro) | 1,000 | 60,000 | 1,440,000 |
+| API Key (Enterprise) | 10,000 | 600,000 | 14,400,000 |
+| OAuth Token | 5,000 | 300,000 | 7,200,000 |
+| JWT Token | 10,000 | 600,000 | 14,400,000 |
+
+## Rate Limit Headers
+
+Every API response includes rate limit information in the headers:
+
+```http
+X-RateLimit-Limit: 1000
+X-RateLimit-Remaining: 999
+X-RateLimit-Reset: 1609459200
+X-RateLimit-Retry-After: 60
+```
+
+| Header | Description |
+|--------|-------------|
+| `X-RateLimit-Limit` | Maximum requests allowed in the current window |
+| `X-RateLimit-Remaining` | Number of requests remaining in the current window |
+| `X-RateLimit-Reset` | Unix timestamp when the rate limit window resets |
+| `X-RateLimit-Retry-After` | Seconds to wait before making another request (only when rate limited) |
+
+## Rate Limit Response
+
+When you exceed the rate limit, you'll receive a `429 Too Many Requests` response:
+
+```json
+{
+  "error": "rate_limit_exceeded",
+  "message": "API rate limit exceeded",
+  "retry_after": 60,
+  "documentation_url": "https://docs.holysuck.com/rate-limits"
+}
+```
+
+## Endpoint-Specific Limits
+
+Some endpoints have additional restrictions:
+
+### Bulk Operations
+- **Bulk User Creation**: Maximum 100 users per request
+- **Bulk Data Export**: Maximum 10,000 records per request
+- **Bulk Updates**: Maximum 50 items per request
+
+### Real-time Endpoints
+- **WebSocket Connections**: Maximum 10 concurrent connections per API key
+- **Webhook Deliveries**: Maximum 1,000 deliveries per hour
+
+### Analytics Endpoints
+- **Real-time Metrics**: Maximum 60 requests per minute
+- **Historical Data**: Maximum 10 requests per minute for date ranges > 30 days
+
+## Best Practices
+
+### 1. Implement Exponential Backoff
+
+When you receive a rate limit error, implement exponential backoff:
+
+<CodeGroup>
+
+```javascript JavaScript
+async function makeRequestWithBackoff(url, options, maxRetries = 3) {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      const response = await fetch(url, options);
+      
+      if (response.status === 429) {
+        const retryAfter = response.headers.get('X-RateLimit-Retry-After');
+        const delay = retryAfter ? parseInt(retryAfter) * 1000 : Math.pow(2, attempt) * 1000;
+        
+        if (attempt < maxRetries) {
+          await new Promise(resolve => setTimeout(resolve, delay));
+          continue;
+        }
+      }
+      
+      return response;
+    } catch (error) {
+      if (attempt === maxRetries) throw error;
+      await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 1000));
+    }
+  }
+}
+```
+
+```python Python
+import time
+import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
+
+def create_session_with_retries():
+    session = requests.Session()
+    
+    retry_strategy = Retry(
+        total=3,
+        status_forcelist=[429, 500, 502, 503, 504],
+        backoff_factor=1
+    )
+    
+    adapter = HTTPAdapter(max_retries=retry_strategy)
+    session.mount("http://", adapter)
+    session.mount("https://", adapter)
+    
+    return session
+
+session = create_session_with_retries()
+```
+
+```go Go
+package main
+
+import (
+    "math"
+    "net/http"
+    "time"
+)
+
+func makeRequestWithBackoff(client *http.Client, req *http.Request, maxRetries int) (*http.Response, error) {
+    for attempt := 0; attempt <= maxRetries; attempt++ {
+        resp, err := client.Do(req)
+        
+        if err != nil {
+            if attempt == maxRetries {
+                return nil, err
+            }
+            time.Sleep(time.Duration(math.Pow(2, float64(attempt))) * time.Second)
+            continue
+        }
+        
+        if resp.StatusCode == 429 {
+            retryAfter := resp.Header.Get("X-RateLimit-Retry-After")
+            if retryAfter != "" {
+                // Parse and wait for retry-after seconds
+            }
+            
+            if attempt < maxRetries {
+                time.Sleep(time.Duration(math.Pow(2, float64(attempt))) * time.Second)
+                continue
+            }
+        }
+        
+        return resp, nil
+    }
+    
+    return nil, fmt.Errorf("max retries exceeded")
+}
+```
+
+</CodeGroup>
+
+### 2. Monitor Rate Limit Headers
+
+Always check the rate limit headers and adjust your request frequency:
+
+```javascript
+function checkRateLimit(response) {
+  const remaining = parseInt(response.headers.get('X-RateLimit-Remaining'));
+  const reset = parseInt(response.headers.get('X-RateLimit-Reset'));
+  
+  if (remaining < 10) {
+    const resetTime = new Date(reset * 1000);
+    console.warn(`Rate limit low: ${remaining} requests remaining until ${resetTime}`);
+  }
+}
+```
+
+### 3. Batch Your Requests
+
+Instead of making multiple individual requests, use batch endpoints when available:
+
+```javascript
+// ❌ Don't do this
+for (const user of users) {
+  await createUser(user);
+}
+
+// ✅ Do this instead
+await createUsersBatch(users);
+```
+
+### 4. Cache Responses
+
+Cache API responses to reduce the number of requests:
+
+```javascript
+const cache = new Map();
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+async function getCachedUser(userId) {
+  const cacheKey = `user:${userId}`;
+  const cached = cache.get(cacheKey);
+  
+  if (cached && (Date.now() - cached.timestamp) < CACHE_TTL) {
+    return cached.data;
+  }
+  
+  const user = await fetchUser(userId);
+  cache.set(cacheKey, { data: user, timestamp: Date.now() });
+  
+  return user;
+}
+```
+
+## Increasing Rate Limits
+
+### Upgrade Your Plan
+
+Higher tier plans come with increased rate limits:
+
+- **Free**: 100 requests/minute
+- **Pro**: 1,000 requests/minute  
+- **Enterprise**: 10,000 requests/minute
+
+### Request Rate Limit Increase
+
+For Enterprise customers, you can request custom rate limits:
+
+1. Contact our [support team](mailto:support@holysuck.com)
+2. Provide your use case and expected traffic
+3. Include your current plan and account details
+
+## Monitoring Usage
+
+### Dashboard
+
+View your API usage in the [HolySuck Dashboard](https://app.holysuck.com/api-usage):
+
+- Real-time request counts
+- Rate limit utilization
+- Historical usage patterns
+- Top endpoints by usage
+
+### Webhooks
+
+Set up webhooks to get notified when you're approaching rate limits:
+
+```json
+{
+  "event": "rate_limit_warning",
+  "data": {
+    "api_key": "key_123...",
+    "current_usage": 900,
+    "limit": 1000,
+    "window": "minute",
+    "percentage": 90
+  }
+}
+```
+
+## Regional Limits
+
+Rate limits may vary by region:
+
+| Region | Multiplier |
+|--------|------------|
+| US East | 1.0x |
+| US West | 1.0x |
+| Europe | 0.8x |
+| Asia Pacific | 0.6x |
+
+<Note>
+Regional limits are automatically applied based on the request origin. Enterprise customers can request consistent global limits.
+</Note>
+
+## Troubleshooting
+
+### Common Issues
+
+1. **Sudden Rate Limit Increases**
+   - Check if your application is making redundant requests
+   - Look for infinite loops or recursive calls
+   - Verify caching is working correctly
+
+2. **Inconsistent Rate Limiting**
+   - Rate limits are calculated using a sliding window
+   - Burst requests may hit limits faster than expected
+   - Consider spreading requests more evenly
+
+3. **Shared Rate Limits**
+   - API keys are shared across all applications using the same key
+   - Consider using separate API keys for different applications
+
+### Getting Help
+
+If you're experiencing unexpected rate limiting:
+
+1. Check the [Status Page](https://status.holysuck.com)
+2. Review your usage in the dashboard
+3. Contact [support](mailto:support@holysuck.com) with:
+   - Your API key ID
+   - Timestamp of the issue
+   - Expected vs actual behavior

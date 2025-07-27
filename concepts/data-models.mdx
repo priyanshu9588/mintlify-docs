@@ -1,0 +1,359 @@
+---
+title: 'Data Models'
+description: 'Complete reference for HolySuck API data models and schemas'
+---
+
+## Overview
+
+HolySuck API uses consistent data models across all endpoints. This page documents the core data structures and their relationships.
+
+## Core Models
+
+### User
+
+Represents a user account in the HolySuck system.
+
+```json
+{
+  "id": "user_1234567890abcdef",
+  "email": "user@example.com",
+  "name": "John Doe",
+  "avatar_url": "https://avatars.holysuck.com/user_123.jpg",
+  "status": "active",
+  "role": "user",
+  "metadata": {
+    "plan": "pro",
+    "onboarded": true,
+    "preferences": {
+      "theme": "dark",
+      "notifications": true
+    }
+  },
+  "created_at": "2024-01-15T10:30:00Z",
+  "updated_at": "2024-01-15T10:30:00Z",
+  "last_login_at": "2024-01-20T14:45:00Z"
+}
+```
+
+#### User Fields
+
+| Field | Type | Description | Required |
+|-------|------|-------------|----------|
+| `id` | string | Unique user identifier | ✅ |
+| `email` | string | User's email address | ✅ |
+| `name` | string | Display name | ✅ |
+| `avatar_url` | string | Profile picture URL | ❌ |
+| `status` | enum | Account status (`active`, `inactive`, `suspended`) | ✅ |
+| `role` | enum | User role (`user`, `admin`, `moderator`) | ✅ |
+| `metadata` | object | Custom user metadata | ❌ |
+| `created_at` | timestamp | Account creation time | ✅ |
+| `updated_at` | timestamp | Last update time | ✅ |
+| `last_login_at` | timestamp | Last login time | ❌ |
+
+### Service
+
+Represents a service or application in the HolySuck ecosystem.
+
+```json
+{
+  "id": "service_abcdef1234567890",
+  "name": "My Application",
+  "description": "A sample application using HolySuck API",
+  "type": "web_application",
+  "status": "active",
+  "configuration": {
+    "webhook_url": "https://myapp.com/webhooks",
+    "allowed_origins": ["https://myapp.com"],
+    "rate_limit": 1000
+  },
+  "owner": {
+    "id": "user_1234567890abcdef",
+    "name": "John Doe",
+    "email": "user@example.com"
+  },
+  "api_keys": [
+    {
+      "id": "key_1234567890abcdef",
+      "name": "Production Key",
+      "prefix": "pk_live_",
+      "created_at": "2024-01-15T10:30:00Z"
+    }
+  ],
+  "metrics": {
+    "total_requests": 15420,
+    "requests_today": 342,
+    "last_request_at": "2024-01-20T14:45:00Z"
+  },
+  "created_at": "2024-01-15T10:30:00Z",
+  "updated_at": "2024-01-15T10:30:00Z"
+}
+```
+
+#### Service Fields
+
+| Field | Type | Description | Required |
+|-------|------|-------------|----------|
+| `id` | string | Unique service identifier | ✅ |
+| `name` | string | Service display name | ✅ |
+| `description` | string | Service description | ❌ |
+| `type` | enum | Service type (`web_application`, `mobile_app`, `api_service`) | ✅ |
+| `status` | enum | Service status (`active`, `inactive`, `suspended`) | ✅ |
+| `configuration` | object | Service configuration settings | ❌ |
+| `owner` | object | Service owner information | ✅ |
+| `api_keys` | array | Associated API keys | ❌ |
+| `metrics` | object | Usage metrics | ❌ |
+| `created_at` | timestamp | Service creation time | ✅ |
+| `updated_at` | timestamp | Last update time | ✅ |
+
+### API Key
+
+Represents an API key for authentication.
+
+```json
+{
+  "id": "key_1234567890abcdef",
+  "name": "Production Key",
+  "prefix": "pk_live_1234",
+  "scopes": ["read", "write"],
+  "service_id": "service_abcdef1234567890",
+  "last_used_at": "2024-01-20T14:45:00Z",
+  "expires_at": null,
+  "created_at": "2024-01-15T10:30:00Z"
+}
+```
+
+#### API Key Fields
+
+| Field | Type | Description | Required |
+|-------|------|-------------|----------|
+| `id` | string | Unique key identifier | ✅ |
+| `name` | string | Human-readable key name | ✅ |
+| `prefix` | string | Key prefix for identification | ✅ |
+| `scopes` | array | Permitted scopes | ✅ |
+| `service_id` | string | Associated service ID | ✅ |
+| `last_used_at` | timestamp | Last usage time | ❌ |
+| `expires_at` | timestamp | Expiration time (null = no expiry) | ❌ |
+| `created_at` | timestamp | Key creation time | ✅ |
+
+### Webhook
+
+Represents a webhook configuration.
+
+```json
+{
+  "id": "webhook_1234567890abcdef",
+  "url": "https://myapp.com/webhooks/holysuck",
+  "events": ["user.created", "user.updated", "service.deleted"],
+  "secret": "whsec_1234567890abcdef",
+  "status": "active",
+  "service_id": "service_abcdef1234567890",
+  "delivery_config": {
+    "max_retries": 3,
+    "retry_delay": 60,
+    "timeout": 30
+  },
+  "last_delivery": {
+    "status": "success",
+    "delivered_at": "2024-01-20T14:45:00Z",
+    "response_code": 200
+  },
+  "created_at": "2024-01-15T10:30:00Z",
+  "updated_at": "2024-01-15T10:30:00Z"
+}
+```
+
+#### Webhook Fields
+
+| Field | Type | Description | Required |
+|-------|------|-------------|----------|
+| `id` | string | Unique webhook identifier | ✅ |
+| `url` | string | Webhook endpoint URL | ✅ |
+| `events` | array | Subscribed event types | ✅ |
+| `secret` | string | Webhook signing secret | ✅ |
+| `status` | enum | Webhook status (`active`, `inactive`) | ✅ |
+| `service_id` | string | Associated service ID | ✅ |
+| `delivery_config` | object | Delivery configuration | ❌ |
+| `last_delivery` | object | Last delivery attempt | ❌ |
+| `created_at` | timestamp | Webhook creation time | ✅ |
+| `updated_at` | timestamp | Last update time | ✅ |
+
+### Analytics Metric
+
+Represents usage analytics and metrics.
+
+```json
+{
+  "id": "metric_1234567890abcdef",
+  "name": "api_requests",
+  "display_name": "API Requests",
+  "description": "Total number of API requests",
+  "value": 15420,
+  "unit": "count",
+  "dimensions": {
+    "service_id": "service_abcdef1234567890",
+    "endpoint": "/v1/users",
+    "method": "GET",
+    "status_code": "200"
+  },
+  "period": {
+    "start": "2024-01-20T00:00:00Z",
+    "end": "2024-01-20T23:59:59Z",
+    "granularity": "day"
+  },
+  "timestamp": "2024-01-20T14:45:00Z"
+}
+```
+
+#### Analytics Metric Fields
+
+| Field | Type | Description | Required |
+|-------|------|-------------|----------|
+| `id` | string | Unique metric identifier | ✅ |
+| `name` | string | Metric name | ✅ |
+| `display_name` | string | Human-readable metric name | ✅ |
+| `description` | string | Metric description | ❌ |
+| `value` | number | Metric value | ✅ |
+| `unit` | string | Value unit (`count`, `bytes`, `milliseconds`) | ✅ |
+| `dimensions` | object | Metric dimensions/filters | ❌ |
+| `period` | object | Time period information | ✅ |
+| `timestamp` | timestamp | Metric timestamp | ✅ |
+
+## Enumerations
+
+### User Status
+
+| Value | Description |
+|-------|-------------|
+| `active` | User account is active and functional |
+| `inactive` | User account is temporarily inactive |
+| `suspended` | User account is suspended due to policy violation |
+
+### User Role
+
+| Value | Description |
+|-------|-------------|
+| `user` | Standard user with basic permissions |
+| `admin` | Administrator with full system access |
+| `moderator` | Moderator with limited administrative permissions |
+
+### Service Type
+
+| Value | Description |
+|-------|-------------|
+| `web_application` | Web-based application |
+| `mobile_app` | Mobile application (iOS/Android) |
+| `api_service` | Server-to-server API integration |
+
+### API Key Scopes
+
+| Scope | Description |
+|-------|-------------|
+| `read` | Read access to resources |
+| `write` | Write access to resources |
+| `admin` | Administrative operations |
+| `analytics` | Access to analytics data |
+| `webhooks` | Manage webhook configurations |
+
+### Webhook Events
+
+| Event | Description |
+|-------|-------------|
+| `user.created` | New user account created |
+| `user.updated` | User account updated |
+| `user.deleted` | User account deleted |
+| `service.created` | New service created |
+| `service.updated` | Service updated |
+| `service.deleted` | Service deleted |
+| `api_key.created` | New API key created |
+| `api_key.deleted` | API key deleted |
+| `webhook.delivery_failed` | Webhook delivery failed |
+
+## Relationships
+
+### User → Services
+- One user can own multiple services
+- Access via `GET /v1/users/{user_id}/services`
+
+### Service → API Keys
+- One service can have multiple API keys
+- Access via `GET /v1/services/{service_id}/api-keys`
+
+### Service → Webhooks
+- One service can have multiple webhooks
+- Access via `GET /v1/services/{service_id}/webhooks`
+
+### Service → Analytics
+- Analytics are associated with services
+- Access via `GET /v1/services/{service_id}/analytics`
+
+## Common Patterns
+
+### Pagination
+
+All list endpoints use cursor-based pagination:
+
+```json
+{
+  "data": [...],
+  "pagination": {
+    "page": 1,
+    "per_page": 20,
+    "total": 100,
+    "total_pages": 5,
+    "has_more": true,
+    "next_cursor": "cursor_abcdef123456",
+    "prev_cursor": null
+  }
+}
+```
+
+### Timestamps
+
+All timestamps are in ISO 8601 format with UTC timezone:
+
+```json
+{
+  "created_at": "2024-01-15T10:30:00Z",
+  "updated_at": "2024-01-15T10:30:00Z"
+}
+```
+
+### Error Objects
+
+Error responses follow a consistent structure:
+
+```json
+{
+  "error": "validation_failed",
+  "message": "The request contains invalid parameters",
+  "details": [
+    {
+      "field": "email",
+      "code": "invalid_format",
+      "message": "Email must be a valid email address"
+    }
+  ],
+  "request_id": "req_1234567890abcdef",
+  "documentation_url": "https://docs.holysuck.com/errors/validation_failed"
+}
+```
+
+### Metadata Objects
+
+Many resources support custom metadata:
+
+```json
+{
+  "metadata": {
+    "internal_id": "legacy_123",
+    "department": "engineering",
+    "cost_center": "eng-001"
+  }
+}
+```
+
+Metadata has the following constraints:
+- Maximum 50 key-value pairs
+- Keys must be strings (max 40 characters)
+- Values must be strings (max 500 characters)
+- Reserved keys: `id`, `created_at`, `updated_at`
