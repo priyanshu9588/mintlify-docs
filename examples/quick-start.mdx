@@ -1,0 +1,1123 @@
+---
+title: 'Quick Start Examples'
+description: 'Ready-to-use code examples to get started with HolySuck API'
+---
+
+## Overview
+
+This page provides practical, copy-paste examples to help you get started with HolySuck API quickly. Each example includes error handling and best practices.
+
+## Basic Setup
+
+### Environment Setup
+
+<CodeGroup>
+
+```bash .env
+HOLYSUCK_API_KEY=your_api_key_here
+HOLYSUCK_BASE_URL=https://api.holysuck.com/v1
+```
+
+```javascript config.js
+module.exports = {
+  apiKey: process.env.HOLYSUCK_API_KEY,
+  baseURL: process.env.HOLYSUCK_BASE_URL || 'https://api.holysuck.com/v1',
+  timeout: 30000
+};
+```
+
+</CodeGroup>
+
+### Basic HTTP Client
+
+<CodeGroup>
+
+```javascript Axios
+const axios = require('axios');
+const config = require('./config');
+
+const client = axios.create({
+  baseURL: config.baseURL,
+  headers: {
+    'Authorization': `Bearer ${config.apiKey}`,
+    'Content-Type': 'application/json'
+  },
+  timeout: config.timeout
+});
+
+// Add response interceptor for error handling
+client.interceptors.response.use(
+  response => response,
+  error => {
+    console.error('API Error:', error.response?.data || error.message);
+    throw error;
+  }
+);
+
+module.exports = client;
+```
+
+```javascript Fetch
+const config = require('./config');
+
+class APIClient {
+  constructor() {
+    this.baseURL = config.baseURL;
+    this.headers = {
+      'Authorization': `Bearer ${config.apiKey}`,
+      'Content-Type': 'application/json'
+    };
+  }
+
+  async request(method, endpoint, data = null) {
+    const url = `${this.baseURL}${endpoint}`;
+    const options = {
+      method,
+      headers: this.headers,
+      body: data ? JSON.stringify(data) : null
+    };
+
+    try {
+      const response = await fetch(url, options);
+      
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(`API Error: ${error.message}`);
+      }
+      
+      return response.json();
+    } catch (error) {
+      console.error('Request failed:', error.message);
+      throw error;
+    }
+  }
+
+  get(endpoint) { return this.request('GET', endpoint); }
+  post(endpoint, data) { return this.request('POST', endpoint, data); }
+  put(endpoint, data) { return this.request('PUT', endpoint, data); }
+  delete(endpoint) { return this.request('DELETE', endpoint); }
+}
+
+module.exports = new APIClient();
+```
+
+</CodeGroup>
+
+## User Management Examples
+
+### Get Current User
+
+<CodeGroup>
+
+```javascript Simple
+const client = require('./client');
+
+async function getCurrentUser() {
+  try {
+    const response = await client.get('/users/me');
+    console.log('Current user:', response.data);
+    return response.data;
+  } catch (error) {
+    console.error('Failed to get current user:', error.message);
+    throw error;
+  }
+}
+
+// Usage
+getCurrentUser()
+  .then(user => console.log(`Welcome, ${user.name}!`))
+  .catch(error => console.error('Error:', error.message));
+```
+
+```javascript With Error Handling
+const client = require('./client');
+
+async function getCurrentUser() {
+  try {
+    const response = await client.get('/users/me');
+    return response.data;
+  } catch (error) {
+    if (error.response?.status === 401) {
+      throw new Error('Invalid API key or expired token');
+    } else if (error.response?.status === 429) {
+      throw new Error('Rate limit exceeded. Please try again later.');
+    } else {
+      throw new Error(`Failed to get user: ${error.response?.data?.message || error.message}`);
+    }
+  }
+}
+
+// Usage with proper error handling
+async function main() {
+  try {
+    const user = await getCurrentUser();
+    console.log('User details:', {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      status: user.status
+    });
+  } catch (error) {
+    console.error('Error:', error.message);
+    process.exit(1);
+  }
+}
+
+main();
+```
+
+</CodeGroup>
+
+### Create User
+
+<CodeGroup>
+
+```javascript Basic Creation
+const client = require('./client');
+
+async function createUser(userData) {
+  try {
+    const response = await client.post('/users', userData);
+    console.log('User created successfully:', response.data);
+    return response.data;
+  } catch (error) {
+    console.error('Failed to create user:', error.response?.data || error.message);
+    throw error;
+  }
+}
+
+// Usage
+const newUser = {
+  email: 'newuser@example.com',
+  name: 'New User',
+  password: 'securePassword123',
+  role: 'user'
+};
+
+createUser(newUser)
+  .then(user => console.log('Created user ID:', user.id))
+  .catch(error => console.error('Creation failed'));
+```
+
+```javascript With Validation
+const client = require('./client');
+
+function validateUserData(userData) {
+  const errors = [];
+  
+  if (!userData.email || !/\S+@\S+\.\S+/.test(userData.email)) {
+    errors.push('Valid email is required');
+  }
+  
+  if (!userData.name || userData.name.length < 2) {
+    errors.push('Name must be at least 2 characters');
+  }
+  
+  if (!userData.password || userData.password.length < 8) {
+    errors.push('Password must be at least 8 characters');
+  }
+  
+  if (errors.length > 0) {
+    throw new Error(`Validation failed: ${errors.join(', ')}`);
+  }
+}
+
+async function createUser(userData) {
+  try {
+    // Validate input
+    validateUserData(userData);
+    
+    // Create user
+    const response = await client.post('/users', userData);
+    
+    console.log('User created successfully:', {
+      id: response.data.id,
+      email: response.data.email,
+      name: response.data.name
+    });
+    
+    return response.data;
+  } catch (error) {
+    if (error.response?.status === 400) {
+      const details = error.response.data.details || [];
+      const messages = details.map(d => `${d.field}: ${d.message}`);
+      console.error('Validation errors:', messages);
+    } else {
+      console.error('Failed to create user:', error.message);
+    }
+    throw error;
+  }
+}
+
+// Usage
+async function main() {
+  const userData = {
+    email: 'test@example.com',
+    name: 'Test User',
+    password: 'strongPassword123',
+    role: 'user',
+    metadata: {
+      department: 'engineering',
+      hire_date: new Date().toISOString().split('T')[0]
+    }
+  };
+  
+  try {
+    const user = await createUser(userData);
+    console.log('Success! User ID:', user.id);
+  } catch (error) {
+    console.error('Failed:', error.message);
+  }
+}
+
+main();
+```
+
+</CodeGroup>
+
+### Update User
+
+<CodeGroup>
+
+```javascript Basic Update
+const client = require('./client');
+
+async function updateUser(userId, updates) {
+  try {
+    const response = await client.put(`/users/${userId}`, updates);
+    console.log('User updated successfully:', response.data);
+    return response.data;
+  } catch (error) {
+    console.error('Failed to update user:', error.response?.data || error.message);
+    throw error;
+  }
+}
+
+// Usage
+updateUser('user_123', {
+  name: 'Updated Name',
+  metadata: { department: 'marketing' }
+})
+.then(user => console.log('Updated:', user.name))
+.catch(error => console.error('Update failed'));
+```
+
+```javascript Partial Updates
+const client = require('./client');
+
+async function updateUserPartially(userId, updates) {
+  try {
+    // First, get the current user
+    const currentUser = await client.get(`/users/${userId}`);
+    
+    // Merge updates with existing data
+    const updatedData = {
+      ...currentUser.data,
+      ...updates,
+      // Special handling for metadata
+      metadata: {
+        ...currentUser.data.metadata,
+        ...updates.metadata
+      }
+    };
+    
+    // Remove read-only fields
+    delete updatedData.id;
+    delete updatedData.created_at;
+    delete updatedData.updated_at;
+    
+    const response = await client.put(`/users/${userId}`, updatedData);
+    console.log('User updated successfully');
+    return response.data;
+  } catch (error) {
+    if (error.response?.status === 404) {
+      throw new Error(`User with ID ${userId} not found`);
+    }
+    throw error;
+  }
+}
+
+// Usage
+updateUserPartially('user_123', {
+  name: 'New Name',
+  metadata: {
+    updated_by: 'admin',
+    last_modified: new Date().toISOString()
+  }
+})
+.then(user => console.log('Update complete'))
+.catch(error => console.error('Error:', error.message));
+```
+
+</CodeGroup>
+
+### List Users with Pagination
+
+<CodeGroup>
+
+```javascript Basic Listing
+const client = require('./client');
+
+async function listUsers(page = 1, perPage = 20) {
+  try {
+    const response = await client.get(`/users?page=${page}&per_page=${perPage}`);
+    
+    console.log(`Page ${response.data.pagination.page} of ${response.data.pagination.total_pages}`);
+    console.log(`Total users: ${response.data.pagination.total}`);
+    
+    return response.data;
+  } catch (error) {
+    console.error('Failed to list users:', error.message);
+    throw error;
+  }
+}
+
+// Usage
+listUsers(1, 10)
+  .then(result => {
+    result.data.forEach(user => {
+      console.log(`${user.id}: ${user.name} (${user.email})`);
+    });
+  })
+  .catch(error => console.error('Error:', error.message));
+```
+
+```javascript Complete Pagination
+const client = require('./client');
+
+async function getAllUsers(filters = {}) {
+  const allUsers = [];
+  let page = 1;
+  let hasMore = true;
+  
+  while (hasMore) {
+    try {
+      const params = new URLSearchParams({
+        page: page.toString(),
+        per_page: '100',
+        ...filters
+      });
+      
+      const response = await client.get(`/users?${params}`);
+      
+      allUsers.push(...response.data.data);
+      hasMore = response.data.pagination.has_more;
+      page++;
+      
+      console.log(`Fetched page ${page - 1}, total users so far: ${allUsers.length}`);
+      
+      // Rate limiting: small delay between requests
+      if (hasMore) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+    } catch (error) {
+      console.error(`Failed to fetch page ${page}:`, error.message);
+      break;
+    }
+  }
+  
+  return allUsers;
+}
+
+// Usage with filters
+getAllUsers({ status: 'active', role: 'user' })
+  .then(users => {
+    console.log(`Total active users: ${users.length}`);
+    
+    // Group by role
+    const byRole = users.reduce((acc, user) => {
+      acc[user.role] = (acc[user.role] || 0) + 1;
+      return acc;
+    }, {});
+    
+    console.log('Users by role:', byRole);
+  })
+  .catch(error => console.error('Error:', error.message));
+```
+
+</CodeGroup>
+
+## Authentication Examples
+
+### Login Flow
+
+<CodeGroup>
+
+```javascript Basic Login
+const client = require('./client');
+
+async function login(email, password) {
+  try {
+    const response = await client.post('/auth/login', {
+      email,
+      password
+    });
+    
+    const { access_token, expires_in, refresh_token } = response.data;
+    
+    // Store tokens securely
+    localStorage.setItem('access_token', access_token);
+    localStorage.setItem('refresh_token', refresh_token);
+    localStorage.setItem('token_expires', Date.now() + (expires_in * 1000));
+    
+    console.log('Login successful');
+    return response.data;
+  } catch (error) {
+    if (error.response?.status === 401) {
+      throw new Error('Invalid email or password');
+    }
+    throw new Error('Login failed');
+  }
+}
+
+// Usage
+login('user@example.com', 'password123')
+  .then(tokens => console.log('Logged in successfully'))
+  .catch(error => console.error('Login failed:', error.message));
+```
+
+```javascript Complete Auth Manager
+const client = require('./client');
+
+class AuthManager {
+  constructor() {
+    this.accessToken = localStorage.getItem('access_token');
+    this.refreshToken = localStorage.getItem('refresh_token');
+    this.tokenExpires = parseInt(localStorage.getItem('token_expires') || '0');
+  }
+
+  async login(email, password) {
+    try {
+      const response = await client.post('/auth/login', { email, password });
+      this.storeTokens(response.data);
+      return response.data;
+    } catch (error) {
+      this.clearTokens();
+      throw error;
+    }
+  }
+
+  async refreshAccessToken() {
+    if (!this.refreshToken) {
+      throw new Error('No refresh token available');
+    }
+
+    try {
+      const response = await client.post('/auth/refresh', {
+        refresh_token: this.refreshToken
+      });
+      
+      this.storeTokens(response.data);
+      return response.data;
+    } catch (error) {
+      this.clearTokens();
+      throw error;
+    }
+  }
+
+  async ensureValidToken() {
+    if (!this.accessToken) {
+      throw new Error('Not authenticated');
+    }
+
+    // Check if token expires in next 5 minutes
+    if (this.tokenExpires - Date.now() < 5 * 60 * 1000) {
+      console.log('Token expiring soon, refreshing...');
+      await this.refreshAccessToken();
+    }
+
+    return this.accessToken;
+  }
+
+  storeTokens(tokenData) {
+    this.accessToken = tokenData.access_token;
+    this.refreshToken = tokenData.refresh_token;
+    this.tokenExpires = Date.now() + (tokenData.expires_in * 1000);
+
+    localStorage.setItem('access_token', this.accessToken);
+    localStorage.setItem('refresh_token', this.refreshToken);
+    localStorage.setItem('token_expires', this.tokenExpires.toString());
+  }
+
+  clearTokens() {
+    this.accessToken = null;
+    this.refreshToken = null;
+    this.tokenExpires = 0;
+
+    localStorage.removeItem('access_token');
+    localStorage.removeItem('refresh_token');
+    localStorage.removeItem('token_expires');
+  }
+
+  async logout() {
+    try {
+      await client.post('/auth/logout');
+    } finally {
+      this.clearTokens();
+    }
+  }
+
+  isAuthenticated() {
+    return this.accessToken && this.tokenExpires > Date.now();
+  }
+}
+
+// Usage
+const auth = new AuthManager();
+
+async function authenticatedRequest(method, endpoint, data) {
+  try {
+    const token = await auth.ensureValidToken();
+    
+    // Update client with current token
+    client.defaults.headers.Authorization = `Bearer ${token}`;
+    
+    return await client[method](endpoint, data);
+  } catch (error) {
+    if (error.response?.status === 401) {
+      console.log('Authentication failed, redirecting to login...');
+      auth.clearTokens();
+      // Redirect to login page
+    }
+    throw error;
+  }
+}
+```
+
+</CodeGroup>
+
+## Service Management Examples
+
+### Create and Configure Service
+
+<CodeGroup>
+
+```javascript Create Service
+const client = require('./client');
+
+async function createService(serviceData) {
+  try {
+    const response = await client.post('/services', {
+      name: serviceData.name,
+      description: serviceData.description,
+      type: serviceData.type,
+      configuration: {
+        webhook_url: serviceData.webhookUrl,
+        allowed_origins: serviceData.allowedOrigins || [],
+        rate_limit: serviceData.rateLimit || 1000
+      }
+    });
+    
+    console.log('Service created:', response.data);
+    return response.data;
+  } catch (error) {
+    console.error('Failed to create service:', error.response?.data || error.message);
+    throw error;
+  }
+}
+
+// Usage
+const serviceData = {
+  name: 'My Web App',
+  description: 'Customer-facing web application',
+  type: 'web_application',
+  webhookUrl: 'https://myapp.com/webhooks/holysuck',
+  allowedOrigins: ['https://myapp.com', 'https://www.myapp.com'],
+  rateLimit: 5000
+};
+
+createService(serviceData)
+  .then(service => {
+    console.log(`Service created with ID: ${service.id}`);
+    return createApiKey(service.id);
+  })
+  .catch(error => console.error('Error:', error.message));
+```
+
+```javascript Complete Service Setup
+const client = require('./client');
+
+async function setupCompleteService(config) {
+  try {
+    console.log('Creating service...');
+    
+    // 1. Create the service
+    const service = await client.post('/services', {
+      name: config.name,
+      description: config.description,
+      type: config.type,
+      configuration: config.configuration
+    });
+    
+    console.log(`Service created: ${service.data.id}`);
+    
+    // 2. Create API keys
+    const apiKeys = [];
+    for (const keyConfig of config.apiKeys) {
+      const apiKey = await client.post(`/services/${service.data.id}/api-keys`, {
+        name: keyConfig.name,
+        scopes: keyConfig.scopes
+      });
+      apiKeys.push(apiKey.data);
+      console.log(`API key created: ${keyConfig.name}`);
+    }
+    
+    // 3. Set up webhooks
+    const webhooks = [];
+    for (const webhookConfig of config.webhooks) {
+      const webhook = await client.post('/webhooks', {
+        service_id: service.data.id,
+        url: webhookConfig.url,
+        events: webhookConfig.events,
+        secret: generateWebhookSecret()
+      });
+      webhooks.push(webhook.data);
+      console.log(`Webhook created: ${webhookConfig.url}`);
+    }
+    
+    return {
+      service: service.data,
+      apiKeys,
+      webhooks
+    };
+    
+  } catch (error) {
+    console.error('Service setup failed:', error.message);
+    throw error;
+  }
+}
+
+function generateWebhookSecret() {
+  return require('crypto').randomBytes(32).toString('hex');
+}
+
+// Usage
+const serviceConfig = {
+  name: 'Production App',
+  description: 'Main production application',
+  type: 'web_application',
+  configuration: {
+    webhook_url: 'https://api.myapp.com/webhooks/holysuck',
+    allowed_origins: ['https://myapp.com'],
+    rate_limit: 10000
+  },
+  apiKeys: [
+    { name: 'Production API Key', scopes: ['read', 'write'] },
+    { name: 'Analytics Key', scopes: ['read', 'analytics'] }
+  ],
+  webhooks: [
+    {
+      url: 'https://api.myapp.com/webhooks/users',
+      events: ['user.created', 'user.updated', 'user.deleted']
+    },
+    {
+      url: 'https://api.myapp.com/webhooks/services',
+      events: ['service.updated']
+    }
+  ]
+};
+
+setupCompleteService(serviceConfig)
+  .then(result => {
+    console.log('Service setup complete!');
+    console.log('Service ID:', result.service.id);
+    console.log('API Keys:', result.apiKeys.map(k => k.name));
+    console.log('Webhooks:', result.webhooks.map(w => w.url));
+  })
+  .catch(error => console.error('Setup failed:', error.message));
+```
+
+</CodeGroup>
+
+## Error Handling Examples
+
+### Comprehensive Error Handler
+
+```javascript
+const client = require('./client');
+
+class APIErrorHandler {
+  static handle(error) {
+    if (!error.response) {
+      // Network error
+      console.error('Network error:', error.message);
+      return { type: 'network', message: 'Connection failed' };
+    }
+
+    const { status, data } = error.response;
+    
+    switch (status) {
+      case 400:
+        return this.handleValidationError(data);
+      case 401:
+        return this.handleAuthError(data);
+      case 403:
+        return this.handlePermissionError(data);
+      case 404:
+        return this.handleNotFoundError(data);
+      case 429:
+        return this.handleRateLimitError(data);
+      case 500:
+        return this.handleServerError(data);
+      default:
+        return { type: 'unknown', message: data.message || 'Unknown error' };
+    }
+  }
+
+  static handleValidationError(data) {
+    const details = data.details || [];
+    const fieldErrors = details.map(d => `${d.field}: ${d.message}`);
+    
+    return {
+      type: 'validation',
+      message: 'Validation failed',
+      details: fieldErrors
+    };
+  }
+
+  static handleAuthError(data) {
+    return {
+      type: 'auth',
+      message: 'Authentication failed - please check your API key',
+      action: 'refresh_token'
+    };
+  }
+
+  static handlePermissionError(data) {
+    return {
+      type: 'permission',
+      message: 'Insufficient permissions for this operation'
+    };
+  }
+
+  static handleNotFoundError(data) {
+    return {
+      type: 'not_found',
+      message: 'The requested resource was not found'
+    };
+  }
+
+  static handleRateLimitError(data) {
+    const retryAfter = data.retry_after || 60;
+    
+    return {
+      type: 'rate_limit',
+      message: `Rate limit exceeded. Retry after ${retryAfter} seconds`,
+      retryAfter
+    };
+  }
+
+  static handleServerError(data) {
+    return {
+      type: 'server',
+      message: 'Server error - please try again later'
+    };
+  }
+}
+
+// Usage with automatic retry
+async function makeRequestWithRetry(requestFn, maxRetries = 3) {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      return await requestFn();
+    } catch (error) {
+      const errorInfo = APIErrorHandler.handle(error);
+      
+      if (errorInfo.type === 'rate_limit' && attempt < maxRetries) {
+        console.log(`Rate limited, waiting ${errorInfo.retryAfter} seconds...`);
+        await new Promise(resolve => setTimeout(resolve, errorInfo.retryAfter * 1000));
+        continue;
+      }
+      
+      if (errorInfo.type === 'server' && attempt < maxRetries) {
+        const delay = Math.pow(2, attempt) * 1000; // Exponential backoff
+        console.log(`Server error, retrying in ${delay}ms...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        continue;
+      }
+      
+      // Don't retry for validation, auth, or permission errors
+      throw errorInfo;
+    }
+  }
+}
+
+// Example usage
+async function createUserWithRetry(userData) {
+  try {
+    return await makeRequestWithRetry(
+      () => client.post('/users', userData)
+    );
+  } catch (errorInfo) {
+    switch (errorInfo.type) {
+      case 'validation':
+        console.error('Validation errors:');
+        errorInfo.details.forEach(detail => console.error(`  ${detail}`));
+        break;
+      case 'auth':
+        console.error('Please check your API key');
+        break;
+      case 'rate_limit':
+        console.error('Too many requests - please slow down');
+        break;
+      default:
+        console.error('Request failed:', errorInfo.message);
+    }
+    throw errorInfo;
+  }
+}
+```
+
+## Webhook Examples
+
+### Express.js Webhook Handler
+
+```javascript
+const express = require('express');
+const crypto = require('crypto');
+const client = require('./client');
+
+const app = express();
+
+// Raw body parser for webhooks
+app.use('/webhooks', express.raw({ type: 'application/json' }));
+
+function verifyWebhookSignature(payload, signature, secret) {
+  const expectedSignature = crypto
+    .createHmac('sha256', secret)
+    .update(payload)
+    .digest('hex');
+  
+  return signature === `sha256=${expectedSignature}`;
+}
+
+app.post('/webhooks/holysuck', (req, res) => {
+  const signature = req.headers['x-holysuck-signature'];
+  const payload = req.body;
+  const secret = process.env.WEBHOOK_SECRET;
+
+  // Verify signature
+  if (!verifyWebhookSignature(payload, signature, secret)) {
+    console.error('Invalid webhook signature');
+    return res.status(401).send('Invalid signature');
+  }
+
+  try {
+    const event = JSON.parse(payload);
+    handleWebhookEvent(event);
+    res.status(200).send('OK');
+  } catch (error) {
+    console.error('Webhook processing failed:', error.message);
+    res.status(500).send('Processing failed');
+  }
+});
+
+async function handleWebhookEvent(event) {
+  console.log(`Received webhook: ${event.event}`);
+  
+  switch (event.event) {
+    case 'user.created':
+      await handleUserCreated(event.data);
+      break;
+    case 'user.updated':
+      await handleUserUpdated(event.data);
+      break;
+    case 'user.deleted':
+      await handleUserDeleted(event.data);
+      break;
+    case 'service.created':
+      await handleServiceCreated(event.data);
+      break;
+    default:
+      console.log(`Unhandled event type: ${event.event}`);
+  }
+}
+
+async function handleUserCreated(user) {
+  console.log(`New user created: ${user.email}`);
+  
+  // Send welcome email
+  await sendWelcomeEmail(user);
+  
+  // Update CRM
+  await updateCRM('create_user', user);
+  
+  // Log for analytics
+  console.log('User creation processed successfully');
+}
+
+async function handleUserUpdated(user) {
+  console.log(`User updated: ${user.email}`);
+  
+  // Sync with external systems
+  await syncUserWithExternalSystems(user);
+  
+  // Update local cache
+  await updateUserCache(user);
+}
+
+async function handleUserDeleted(user) {
+  console.log(`User deleted: ${user.email}`);
+  
+  // Cleanup user data
+  await cleanupUserData(user.id);
+  
+  // Update CRM
+  await updateCRM('delete_user', user);
+}
+
+async function sendWelcomeEmail(user) {
+  // Integration with email service
+  console.log(`Sending welcome email to ${user.email}`);
+  // Implementation depends on your email provider
+}
+
+async function updateCRM(action, user) {
+  // Integration with CRM system
+  console.log(`Updating CRM: ${action} for ${user.email}`);
+  // Implementation depends on your CRM
+}
+
+async function syncUserWithExternalSystems(user) {
+  // Sync with other systems
+  console.log(`Syncing user ${user.email} with external systems`);
+}
+
+async function updateUserCache(user) {
+  // Update local cache or database
+  console.log(`Updating cache for user ${user.email}`);
+}
+
+async function cleanupUserData(userId) {
+  // Cleanup related data
+  console.log(`Cleaning up data for user ${userId}`);
+}
+
+app.listen(3000, () => {
+  console.log('Webhook server running on port 3000');
+});
+```
+
+## Real-World Integration Example
+
+### Complete User Dashboard Backend
+
+```javascript
+const express = require('express');
+const client = require('./client');
+const { APIErrorHandler, makeRequestWithRetry } = require('./error-handler');
+
+const app = express();
+app.use(express.json());
+
+// Middleware for API key validation
+async function validateApiKey(req, res, next) {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader?.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'Missing or invalid authorization header' });
+    }
+
+    // Update client with request API key
+    const token = authHeader.substring(7);
+    client.defaults.headers.Authorization = `Bearer ${token}`;
+    
+    // Verify token by making a test request
+    await client.get('/users/me');
+    next();
+  } catch (error) {
+    const errorInfo = APIErrorHandler.handle(error);
+    res.status(401).json({ error: 'Invalid API key' });
+  }
+}
+
+// Get current user profile
+app.get('/api/profile', validateApiKey, async (req, res) => {
+  try {
+    const user = await makeRequestWithRetry(() => client.get('/users/me'));
+    res.json(user.data);
+  } catch (error) {
+    const errorInfo = APIErrorHandler.handle(error);
+    res.status(500).json(errorInfo);
+  }
+});
+
+// Update user profile
+app.put('/api/profile', validateApiKey, async (req, res) => {
+  try {
+    const updates = req.body;
+    const user = await makeRequestWithRetry(() => 
+      client.put('/users/me', updates)
+    );
+    res.json(user.data);
+  } catch (error) {
+    const errorInfo = APIErrorHandler.handle(error);
+    const status = errorInfo.type === 'validation' ? 400 : 500;
+    res.status(status).json(errorInfo);
+  }
+});
+
+// Get user's services
+app.get('/api/services', validateApiKey, async (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const perPage = parseInt(req.query.per_page) || 10;
+    
+    const services = await makeRequestWithRetry(() =>
+      client.get(`/services?page=${page}&per_page=${perPage}`)
+    );
+    
+    res.json(services.data);
+  } catch (error) {
+    const errorInfo = APIErrorHandler.handle(error);
+    res.status(500).json(errorInfo);
+  }
+});
+
+// Create new service
+app.post('/api/services', validateApiKey, async (req, res) => {
+  try {
+    const serviceData = req.body;
+    const service = await makeRequestWithRetry(() =>
+      client.post('/services', serviceData)
+    );
+    
+    res.status(201).json(service.data);
+  } catch (error) {
+    const errorInfo = APIErrorHandler.handle(error);
+    const status = errorInfo.type === 'validation' ? 400 : 500;
+    res.status(status).json(errorInfo);
+  }
+});
+
+// Get service analytics
+app.get('/api/services/:serviceId/analytics', validateApiKey, async (req, res) => {
+  try {
+    const { serviceId } = req.params;
+    const { start_date, end_date, granularity = 'day' } = req.query;
+    
+    const analytics = await makeRequestWithRetry(() =>
+      client.get(`/analytics/metrics?service_id=${serviceId}&start_date=${start_date}&end_date=${end_date}&granularity=${granularity}`)
+    );
+    
+    res.json(analytics.data);
+  } catch (error) {
+    const errorInfo = APIErrorHandler.handle(error);
+    res.status(500).json(errorInfo);
+  }
+});
+
+// Error handling middleware
+app.use((error, req, res, next) => {
+  console.error('Unhandled error:', error.message);
+  res.status(500).json({ error: 'Internal server error' });
+});
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});
+```
+
+This comprehensive collection of examples should help you integrate HolySuck API into your applications quickly and efficiently. Each example includes proper error handling, validation, and follows best practices for production use.

@@ -1,0 +1,695 @@
+---
+title: 'Integration Guide'
+description: 'Step-by-step guide to integrating HolySuck API into your application'
+---
+
+## Overview
+
+This comprehensive guide will walk you through integrating HolySuck API into your application, from initial setup to advanced features.
+
+## Prerequisites
+
+Before you begin, ensure you have:
+
+- A HolySuck account ([sign up here](https://app.holysuck.com/signup))
+- Basic knowledge of REST APIs
+- Your preferred programming language environment
+- An application or service to integrate with
+
+## Step 1: Account Setup
+
+### Create Your Account
+
+1. **Sign up** for a HolySuck account
+2. **Verify your email** address
+3. **Complete your profile** with your organization details
+
+### Generate API Keys
+
+1. Navigate to **Settings** → **API Keys** in your dashboard
+2. Click **Create New API Key**
+3. Choose the appropriate scopes for your use case:
+   - `read`: Read access to your resources
+   - `write`: Create and update resources
+   - `admin`: Full administrative access
+   - `analytics`: Access to usage analytics
+
+<Warning>
+**Keep your API keys secure!** Never commit them to version control or expose them in client-side code.
+</Warning>
+
+## Step 2: Environment Setup
+
+### Development Environment
+
+Create environment variables for your API credentials:
+
+<CodeGroup>
+
+```bash .env
+HOLYSUCK_API_KEY=your_api_key_here
+HOLYSUCK_BASE_URL=https://api.holysuck.com/v1
+HOLYSUCK_ENVIRONMENT=development
+```
+
+```javascript .env.js
+module.exports = {
+  HOLYSUCK_API_KEY: process.env.HOLYSUCK_API_KEY,
+  HOLYSUCK_BASE_URL: process.env.HOLYSUCK_BASE_URL || 'https://api.holysuck.com/v1',
+  HOLYSUCK_ENVIRONMENT: process.env.NODE_ENV || 'development'
+};
+```
+
+```python .env (Python)
+# .env file
+HOLYSUCK_API_KEY=your_api_key_here
+HOLYSUCK_BASE_URL=https://api.holysuck.com/v1
+HOLYSUCK_ENVIRONMENT=development
+
+# Load in your application
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+HOLYSUCK_API_KEY = os.getenv('HOLYSUCK_API_KEY')
+HOLYSUCK_BASE_URL = os.getenv('HOLYSUCK_BASE_URL')
+```
+
+</CodeGroup>
+
+### Production Environment
+
+For production, use secure environment variable management:
+
+- **Heroku**: Use Config Vars
+- **AWS**: Use Parameter Store or Secrets Manager
+- **Kubernetes**: Use Secrets
+- **Docker**: Use Docker secrets
+
+## Step 3: Make Your First Request
+
+Let's start with a simple request to verify your setup:
+
+<CodeGroup>
+
+```javascript JavaScript/Node.js
+const axios = require('axios');
+
+const client = axios.create({
+  baseURL: process.env.HOLYSUCK_BASE_URL,
+  headers: {
+    'Authorization': `Bearer ${process.env.HOLYSUCK_API_KEY}`,
+    'Content-Type': 'application/json'
+  }
+});
+
+async function getCurrentUser() {
+  try {
+    const response = await client.get('/users/me');
+    console.log('Current user:', response.data);
+    return response.data;
+  } catch (error) {
+    console.error('Error:', error.response?.data || error.message);
+  }
+}
+
+getCurrentUser();
+```
+
+```python Python
+import requests
+import os
+
+class HolySuckClient:
+    def __init__(self):
+        self.base_url = os.getenv('HOLYSUCK_BASE_URL')
+        self.api_key = os.getenv('HOLYSUCK_API_KEY')
+        self.headers = {
+            'Authorization': f'Bearer {self.api_key}',
+            'Content-Type': 'application/json'
+        }
+    
+    def get_current_user(self):
+        try:
+            response = requests.get(
+                f'{self.base_url}/users/me',
+                headers=self.headers
+            )
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.RequestException as e:
+            print(f'Error: {e}')
+            return None
+
+client = HolySuckClient()
+user = client.get_current_user()
+print('Current user:', user)
+```
+
+```go Go
+package main
+
+import (
+    "encoding/json"
+    "fmt"
+    "io"
+    "net/http"
+    "os"
+)
+
+type HolySuckClient struct {
+    BaseURL string
+    APIKey  string
+    Client  *http.Client
+}
+
+func NewClient() *HolySuckClient {
+    return &HolySuckClient{
+        BaseURL: os.Getenv("HOLYSUCK_BASE_URL"),
+        APIKey:  os.Getenv("HOLYSUCK_API_KEY"),
+        Client:  &http.Client{},
+    }
+}
+
+func (c *HolySuckClient) GetCurrentUser() (map[string]interface{}, error) {
+    req, err := http.NewRequest("GET", c.BaseURL+"/users/me", nil)
+    if err != nil {
+        return nil, err
+    }
+    
+    req.Header.Add("Authorization", "Bearer "+c.APIKey)
+    req.Header.Add("Content-Type", "application/json")
+    
+    resp, err := c.Client.Do(req)
+    if err != nil {
+        return nil, err
+    }
+    defer resp.Body.Close()
+    
+    body, err := io.ReadAll(resp.Body)
+    if err != nil {
+        return nil, err
+    }
+    
+    var user map[string]interface{}
+    err = json.Unmarshal(body, &user)
+    return user, err
+}
+
+func main() {
+    client := NewClient()
+    user, err := client.GetCurrentUser()
+    if err != nil {
+        fmt.Printf("Error: %v\n", err)
+        return
+    }
+    
+    fmt.Printf("Current user: %+v\n", user)
+}
+```
+
+</CodeGroup>
+
+## Step 4: Implement Core Features
+
+### User Management
+
+Implement basic user operations:
+
+```javascript
+class UserManager {
+  constructor(client) {
+    this.client = client;
+  }
+
+  async createUser(userData) {
+    const response = await this.client.post('/users', userData);
+    return response.data;
+  }
+
+  async getUser(userId) {
+    const response = await this.client.get(`/users/${userId}`);
+    return response.data;
+  }
+
+  async updateUser(userId, updates) {
+    const response = await this.client.put(`/users/${userId}`, updates);
+    return response.data;
+  }
+
+  async deleteUser(userId) {
+    await this.client.delete(`/users/${userId}`);
+  }
+
+  async listUsers(options = {}) {
+    const params = new URLSearchParams(options);
+    const response = await this.client.get(`/users?${params}`);
+    return response.data;
+  }
+}
+```
+
+### Error Handling
+
+Implement robust error handling:
+
+```javascript
+class APIError extends Error {
+  constructor(response) {
+    super(response.data?.message || 'API request failed');
+    this.status = response.status;
+    this.code = response.data?.error;
+    this.details = response.data?.details;
+  }
+}
+
+function handleAPIError(error) {
+  if (error.response) {
+    throw new APIError(error.response);
+  } else if (error.request) {
+    throw new Error('Network error: No response received');
+  } else {
+    throw new Error(`Request error: ${error.message}`);
+  }
+}
+
+// Usage
+try {
+  const user = await userManager.createUser(userData);
+} catch (error) {
+  if (error instanceof APIError) {
+    if (error.code === 'validation_failed') {
+      // Handle validation errors
+      error.details.forEach(detail => {
+        console.log(`${detail.field}: ${detail.message}`);
+      });
+    } else if (error.code === 'rate_limit_exceeded') {
+      // Handle rate limiting
+      console.log('Rate limit exceeded, please try again later');
+    }
+  }
+}
+```
+
+## Step 5: Implement Authentication
+
+### API Key Authentication
+
+For server-to-server communication:
+
+```javascript
+const client = axios.create({
+  baseURL: 'https://api.holysuck.com/v1',
+  headers: {
+    'Authorization': `Bearer ${process.env.HOLYSUCK_API_KEY}`
+  }
+});
+```
+
+### OAuth 2.0 Flow
+
+For user-facing applications:
+
+```javascript
+class OAuthClient {
+  constructor(clientId, clientSecret, redirectUri) {
+    this.clientId = clientId;
+    this.clientSecret = clientSecret;
+    this.redirectUri = redirectUri;
+  }
+
+  getAuthorizationUrl(scopes = ['read', 'write']) {
+    const params = new URLSearchParams({
+      client_id: this.clientId,
+      redirect_uri: this.redirectUri,
+      response_type: 'code',
+      scope: scopes.join(' '),
+      state: this.generateState()
+    });
+
+    return `https://api.holysuck.com/oauth/authorize?${params}`;
+  }
+
+  async exchangeCodeForToken(code) {
+    const response = await axios.post('https://api.holysuck.com/oauth/token', {
+      grant_type: 'authorization_code',
+      client_id: this.clientId,
+      client_secret: this.clientSecret,
+      code: code,
+      redirect_uri: this.redirectUri
+    });
+
+    return response.data;
+  }
+
+  generateState() {
+    return Math.random().toString(36).substring(2, 15);
+  }
+}
+```
+
+## Step 6: Add Webhooks
+
+Set up webhooks to receive real-time notifications:
+
+```javascript
+class WebhookManager {
+  constructor(client) {
+    this.client = client;
+  }
+
+  async createWebhook(url, events) {
+    const response = await this.client.post('/webhooks', {
+      url: url,
+      events: events,
+      secret: this.generateSecret()
+    });
+    return response.data;
+  }
+
+  async verifyWebhook(payload, signature, secret) {
+    const crypto = require('crypto');
+    const expectedSignature = crypto
+      .createHmac('sha256', secret)
+      .update(payload)
+      .digest('hex');
+    
+    return signature === `sha256=${expectedSignature}`;
+  }
+
+  generateSecret() {
+    return require('crypto').randomBytes(32).toString('hex');
+  }
+}
+
+// Express.js webhook handler
+app.post('/webhooks/holysuck', express.raw({type: 'application/json'}), (req, res) => {
+  const signature = req.headers['x-holysuck-signature'];
+  const payload = req.body;
+
+  if (!webhookManager.verifyWebhook(payload, signature, webhookSecret)) {
+    return res.status(401).send('Invalid signature');
+  }
+
+  const event = JSON.parse(payload);
+  
+  switch (event.type) {
+    case 'user.created':
+      handleUserCreated(event.data);
+      break;
+    case 'user.updated':
+      handleUserUpdated(event.data);
+      break;
+    default:
+      console.log(`Unhandled event type: ${event.type}`);
+  }
+
+  res.status(200).send('OK');
+});
+```
+
+## Step 7: Performance Optimization
+
+### Caching
+
+Implement caching for frequently accessed data:
+
+```javascript
+const NodeCache = require('node-cache');
+const cache = new NodeCache({ stdTTL: 300 }); // 5 minutes
+
+class CachedUserManager extends UserManager {
+  async getUser(userId) {
+    const cacheKey = `user:${userId}`;
+    let user = cache.get(cacheKey);
+    
+    if (!user) {
+      user = await super.getUser(userId);
+      cache.set(cacheKey, user);
+    }
+    
+    return user;
+  }
+
+  async updateUser(userId, updates) {
+    const user = await super.updateUser(userId, updates);
+    cache.del(`user:${userId}`); // Invalidate cache
+    return user;
+  }
+}
+```
+
+### Rate Limit Handling
+
+Implement automatic retry with exponential backoff:
+
+```javascript
+async function apiCall(fn, maxRetries = 3) {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (error) {
+      if (error.status === 429) { // Rate limited
+        const retryAfter = error.response.headers['x-ratelimit-retry-after'];
+        const delay = retryAfter ? parseInt(retryAfter) * 1000 : Math.pow(2, attempt) * 1000;
+        
+        if (attempt < maxRetries) {
+          await new Promise(resolve => setTimeout(resolve, delay));
+          continue;
+        }
+      }
+      throw error;
+    }
+  }
+}
+```
+
+## Step 8: Monitoring and Logging
+
+### Request Logging
+
+Log all API requests for debugging:
+
+```javascript
+client.interceptors.request.use(request => {
+  console.log(`${request.method.toUpperCase()} ${request.url}`, {
+    headers: request.headers,
+    data: request.data
+  });
+  return request;
+});
+
+client.interceptors.response.use(
+  response => {
+    console.log(`Response ${response.status}`, response.data);
+    return response;
+  },
+  error => {
+    console.error(`Error ${error.response?.status}`, error.response?.data);
+    return Promise.reject(error);
+  }
+);
+```
+
+### Health Monitoring
+
+Monitor API health and performance:
+
+```javascript
+class HealthMonitor {
+  constructor(client) {
+    this.client = client;
+    this.metrics = {
+      requests: 0,
+      errors: 0,
+      avgResponseTime: 0
+    };
+  }
+
+  async healthCheck() {
+    const start = Date.now();
+    try {
+      await this.client.get('/health');
+      this.metrics.requests++;
+      this.updateResponseTime(Date.now() - start);
+      return true;
+    } catch (error) {
+      this.metrics.errors++;
+      return false;
+    }
+  }
+
+  updateResponseTime(responseTime) {
+    this.metrics.avgResponseTime = 
+      (this.metrics.avgResponseTime * (this.metrics.requests - 1) + responseTime) / 
+      this.metrics.requests;
+  }
+
+  getMetrics() {
+    return {
+      ...this.metrics,
+      errorRate: this.metrics.errors / this.metrics.requests
+    };
+  }
+}
+```
+
+## Step 9: Testing
+
+### Unit Tests
+
+Write comprehensive tests for your integration:
+
+```javascript
+const { expect } = require('chai');
+const sinon = require('sinon');
+
+describe('UserManager', () => {
+  let userManager, mockClient;
+
+  beforeEach(() => {
+    mockClient = {
+      get: sinon.stub(),
+      post: sinon.stub(),
+      put: sinon.stub(),
+      delete: sinon.stub()
+    };
+    userManager = new UserManager(mockClient);
+  });
+
+  describe('getUser', () => {
+    it('should return user data', async () => {
+      const userData = { id: 'user_123', name: 'John Doe' };
+      mockClient.get.resolves({ data: userData });
+
+      const result = await userManager.getUser('user_123');
+
+      expect(mockClient.get).to.have.been.calledWith('/users/user_123');
+      expect(result).to.deep.equal(userData);
+    });
+
+    it('should handle user not found', async () => {
+      mockClient.get.rejects({ 
+        response: { status: 404, data: { error: 'user_not_found' } }
+      });
+
+      try {
+        await userManager.getUser('nonexistent');
+        expect.fail('Should have thrown an error');
+      } catch (error) {
+        expect(error.status).to.equal(404);
+      }
+    });
+  });
+});
+```
+
+### Integration Tests
+
+Test the full integration flow:
+
+```javascript
+describe('HolySuck Integration', () => {
+  let testUser;
+
+  before(async () => {
+    // Setup test environment
+    await setupTestEnvironment();
+  });
+
+  it('should complete full user lifecycle', async () => {
+    // Create user
+    testUser = await userManager.createUser({
+      email: 'test@example.com',
+      name: 'Test User',
+      password: 'testPassword123'
+    });
+    expect(testUser.id).to.exist;
+
+    // Get user
+    const retrievedUser = await userManager.getUser(testUser.id);
+    expect(retrievedUser.email).to.equal('test@example.com');
+
+    // Update user
+    const updatedUser = await userManager.updateUser(testUser.id, {
+      name: 'Updated Test User'
+    });
+    expect(updatedUser.name).to.equal('Updated Test User');
+
+    // Delete user
+    await userManager.deleteUser(testUser.id);
+    
+    // Verify deletion
+    try {
+      await userManager.getUser(testUser.id);
+      expect.fail('User should have been deleted');
+    } catch (error) {
+      expect(error.status).to.equal(404);
+    }
+  });
+
+  after(async () => {
+    // Cleanup test environment
+    await cleanupTestEnvironment();
+  });
+});
+```
+
+## Step 10: Production Deployment
+
+### Security Checklist
+
+- [ ] API keys stored securely (not in code)
+- [ ] HTTPS enabled for all API calls
+- [ ] Input validation on all user inputs
+- [ ] Rate limiting implemented
+- [ ] Error handling doesn't expose sensitive data
+- [ ] Webhook signatures verified
+- [ ] Logs don't contain sensitive information
+
+### Performance Checklist
+
+- [ ] Caching implemented for frequently accessed data
+- [ ] Connection pooling configured
+- [ ] Request timeouts set appropriately
+- [ ] Retry logic with exponential backoff
+- [ ] Monitoring and alerting configured
+- [ ] Database queries optimized
+
+### Deployment Steps
+
+1. **Environment Variables**: Configure all required environment variables
+2. **Health Checks**: Implement health check endpoints
+3. **Monitoring**: Set up application performance monitoring
+4. **Logging**: Configure structured logging
+5. **Backup**: Implement data backup procedures
+6. **Rollback Plan**: Prepare rollback procedures
+
+## Next Steps
+
+After completing this integration guide:
+
+1. **Explore Advanced Features**: 
+   - [Analytics API](/api-reference/analytics/get-metrics)
+   - [Real-time Webhooks](/concepts/webhooks)
+   - [Bulk Operations](/guides/best-practices)
+
+2. **Optimize Performance**:
+   - Review [Best Practices](/guides/best-practices)
+   - Implement caching strategies
+   - Monitor API usage patterns
+
+3. **Scale Your Integration**:
+   - Set up monitoring and alerting
+   - Implement automated testing
+   - Plan for high availability
+
+## Getting Help
+
+If you run into issues:
+
+- Check our [Troubleshooting Guide](/guides/troubleshooting)
+- Review [Common Errors](/guides/troubleshooting#common-errors)
+- Join our [Discord Community](https://discord.gg/holysuck)
+- Contact [Support](mailto:support@holysuck.com)
